@@ -11,7 +11,7 @@ This repository is an early MVP for the OpenAI Build Week **Apps for Your Life**
 - Automatic expense categorization with confidence scoring
 - Personalized insight and recommended next action
 - Live budget, category, and transaction updates
-- Gemini 2.5 Flash integration when `GEMINI_API_KEY` is configured
+- Gemini 3.1 Flash Lite integration when `GEMINI_API_KEY` is configured
 - Deterministic local fallback so the demo remains testable without credentials
 - Light and dark color schemes based on the operating-system preference
 
