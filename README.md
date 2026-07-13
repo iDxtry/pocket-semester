@@ -1,23 +1,68 @@
 # Pocket Semester
 
-Pocket Semester is a smart personal budget tracker designed for university students. It turns everyday transactions into clear category totals and gives one specific, non-judgmental action a student can take next.
+Pocket Semester is a student-first budget coach. Students set a semester plan, add or import expenses, see the health of each category, and receive a practical spending plan for the current month.
 
-This repository is an early MVP for the OpenAI Build Week **Apps for Your Life** category.
+It is being built for OpenAI Build Week in the **Apps for Your Life** category.
 
-## What works
+## Current status
 
-- A responsive monthly budget dashboard with realistic sample data
-- Add-expense workflow with server-side validation
-- Automatic expense categorization with confidence scoring
-- Personalized insight and recommended next action
-- Live budget, category, and transaction updates
-- Gemini 3.1 Flash Lite integration when `GEMINI_API_KEY` is configured
-- Deterministic local fallback so the demo remains testable without credentials
-- Light and dark color schemes based on the operating-system preference
+The public, resettable demo is ready at `/demo`. It has fictional data, does not expose another person's records, and supports the full local budgeting loop:
 
-## Run locally
+- Add, edit, delete, and correct expenses.
+- Import a mapped CSV with preview and validation.
+- Switch months and inspect category-level spending.
+- Set category budgets and savings goals.
+- View a transparent end-of-month forecast that keeps fixed costs fixed.
+- Request a structured AI spending plan, with clear unavailable feedback when a plan cannot be refreshed.
 
-Requirements: Node.js 20.9 or newer and npm.
+The account layer, Clerk guards, Drizzle schema, Neon-compatible database access, migrations, and authenticated APIs are included in this repository. It becomes live once Clerk and Neon have been provisioned in the Vercel project and their environment variables are set.
+
+## Why this project
+
+Students often know that they should budget but do not know what to do next. Pocket Semester turns a category total into a small, concrete action: for example, protect a remaining food budget by planning two lower-cost meals, or pause a flexible purchase while an emergency cushion is behind target.
+
+It deliberately excludes bank linking and receipt scanning from the MVP. Manual entry and CSV import make the story judgeable without collecting bank credentials or adding financial-data integration risk.
+
+## Product tour
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Judge-friendly landing page with demo and sign-in entry points. |
+| `/demo` | Public fictional workspace. Browser-only state resets on reload. |
+| `/dashboard` | Signed-in budget overview and monthly forecast. |
+| `/transactions` | Persistent transaction management and CSV import. |
+| `/budgets` | Category limits and spending health. |
+| `/goals` | Emergency or semester savings goals. |
+| `/insights` | Structured coach plans and category watchouts. |
+| `/settings` | Profile settings and delete-my-data control. |
+
+The interface includes a mobile navigation drawer, keyboard-safe dialogs, loading and error states, visible focus styles, dark-mode support, and clear feedback around AI availability.
+
+## Tech stack
+
+- Next.js 16 App Router, React 19, TypeScript, and CSS.
+- Clerk for email/social sign-in and server-derived user identity.
+- Neon Postgres with Drizzle ORM for private, persistent data.
+- Zod for API input and AI structured-output validation.
+- Papa Parse for CSV import preview and mapping.
+- Recharts for spending visualization.
+
+Money is stored as integer cents. Every authenticated API derives ownership from the Clerk session rather than accepting a client-supplied user ID.
+
+## Data model
+
+- `profiles`: Clerk user ID, display name, currency, semester dates, allowance, onboarding state.
+- `transactions`: merchant, description, amount cents, date, category, confidence, and source.
+- `budgets`: one category limit per user and month.
+- `goals`: emergency or semester target, current amount, and target date.
+- `merchant_rules`: a user's corrected merchant-to-category preferences.
+- `coach_runs`: generated structured plans, model metadata, and month.
+
+The initial migration is tracked in [`drizzle/0000_uneven_maggott.sql`](drizzle/0000_uneven_maggott.sql).
+
+## Local development
+
+Requirements: Node.js 20.9+ and npm.
 
 ```bash
 npm install
@@ -25,54 +70,93 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000), or jump directly to [http://localhost:3000/demo](http://localhost:3000/demo).
 
-To enable live Gemini analysis, place a Gemini API key in `.env.local`:
+Never commit `.env.local` or any credential.
+
+### Development AI adapter
+
+During development, the app can use Gemini through this server-only environment configuration:
 
 ```bash
+AI_PROVIDER=gemini
 GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
-Environment files are ignored by Git. Never commit an API key.
+If that provider is unavailable, expense categorization uses a clearly labeled local rule-based result so the transaction still saves. Coach plans do **not** pretend to be AI-generated when a live provider is unavailable; the UI tells the student that the personalized plan could not be refreshed.
 
-## Test the MVP
+### Clerk and Neon setup
 
-1. Select **Add expense**.
-2. Enter a merchant, description, and amount.
-3. Select **Categorize and add**.
-4. Confirm the new transaction appears and the recommendation changes.
+1. Add Clerk and Neon to the Vercel project through Vercel Marketplace, accepting each provider's terms in your own account.
+2. Pull or add the provisioned values to your local and Vercel environments:
 
-The included sample data is fictional and is safe to use during judging.
+   ```bash
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
+   CLERK_SECRET_KEY=...
+   DATABASE_URL=...
+   ```
 
-## Architecture
+3. Apply the tracked schema:
 
-- Next.js 16 App Router and React 19
-- TypeScript and Tailwind CSS 4
-- Recharts for the weekly spending visualization
-- Zod for API input and model-output validation
-- Server-only AI calls through `POST /api/analyze`
+   ```bash
+   npm run db:push
+   ```
 
-The browser never receives the provider credential. If the AI provider is unavailable, the route returns a rules-based classification and still completes the user flow.
+4. Configure Clerk's sign-in/sign-up paths to `/sign-in` and `/sign-up`, then create an account and finish onboarding.
 
-## Build Week status
+Until these variables exist, account pages intentionally show a setup notice instead of simulating private cloud storage.
 
-The current MVP uses Gemini for low-cost development. OpenAI Build Week requires GPT-5.6 and Codex in the submitted project, so the AI adapter must be moved to GPT-5.6 before final submission. The route boundary and validated response shape are intentionally small to make that change contained.
+## API surface
 
-Codex was used to scope the product, implement the dashboard and API flow, validate the build, and test the complete expense interaction in desktop and mobile browser sizes. The final submission should also include the required Codex `/feedback` session ID and a public demo video under three minutes.
+| Endpoint | Capability |
+| --- | --- |
+| `POST /api/analyze` | Categorize one expense with a validated result. Public demo calls are rate-limited. |
+| `GET, POST /api/transactions` | List and create owned transactions. |
+| `PATCH, DELETE /api/transactions/:id` | Edit or delete an owned transaction. |
+| `POST /api/imports/transactions` | Validate and create mapped CSV rows. |
+| `GET, PUT /api/budgets` | Read or replace category budgets for a month. |
+| `GET, PUT /api/goals` | Read or update owned savings goals. |
+| `POST /api/onboarding` | Create/update the signed-in student's profile and initial plan. |
+| `PATCH, DELETE /api/profile` | Update a profile or delete its stored app data. |
+| `POST /api/coach` | Generate and persist an owned monthly coach plan with a per-user cooldown. |
 
 ## Verification
 
 ```bash
+npm test
 npm run lint
 npm run build
 ```
 
-Both commands pass on the current revision.
+The test suite covers cents math, budget aggregation, fixed-cost forecasting, CSV mapping and validation, and structured AI response parsing. Before a production submission, also test a real account journey: sign up, onboard, import a CSV, correct a category, refresh a plan, reload, and confirm that only that user's data remains visible.
 
-## Privacy and financial safety
+## Build Week: required GPT-5.6 switch
 
-Pocket Semester currently uses fictional sample data and does not connect to bank accounts. Recommendations are educational budgeting guidance, not financial, tax, or investment advice.
+Gemini is development-only. Before submitting to OpenAI Build Week, configure an OpenAI API key in the deployment environment and replace the temporary Gemini adapter in `src/lib/ai/provider.ts` with the GPT-5.6 implementation behind the existing `analyzeExpense` and `generateCoachPlan` boundary. Then:
+
+1. Set `AI_PROVIDER=openai` and the production model to `gpt-5.6`.
+2. Verify one live expense categorization and one coach plan on Vercel.
+3. Remove Gemini references from the deployment and public experience.
+4. Record the live GPT-5.6 result in the demo video and Devpost description.
+
+The provider boundary keeps this switch contained while preserving Zod validation, server-only credentials, rate limits, and the no-fake-fallback behavior.
+
+## Codex contribution
+
+Codex accelerated the product scoping, app architecture, data model, responsive interface, CSV flow, AI output schemas, automated tests, and browser verification of the add-expense-to-transactions journey. The submission video should show this workflow alongside the final GPT-5.6 experience.
+
+## Submission checklist
+
+- [ ] Deploy the production app to Vercel with Clerk, Neon, and final GPT-5.6 configuration.
+- [ ] Keep this GitHub repository public, or grant access to the required Build Week reviewer addresses if private.
+- [ ] Update the existing Devpost draft as **Pocket Semester**, including the live URL, public repository, country, and required `/feedback` session ID.
+- [ ] Upload a public YouTube video under three minutes with voiceover: student problem, onboarding, manual or CSV expense, live category update, coach action, budget outcome, Codex, and GPT-5.6.
+
+## Privacy and safety
+
+Pocket Semester does not ask for bank credentials and does not link bank accounts. Data in the public demo is fictional. Private app data is scoped to the signed-in account, and settings include a delete-my-data control. Its suggestions are educational budgeting guidance only, not financial, investment, tax, credit, or legal advice.
 
 ## License
 
-MIT
+[MIT](LICENSE)
