@@ -34,10 +34,10 @@ import {
 } from "@phosphor-icons/react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { categories, categoryColors, type BudgetTransaction, type Category, type CategoryBudget, type StudentGoal, type StudentProfile, type WorkspaceData } from "@/lib/budget";
-import { formatMoney, getBudgetSummary, getForecast, goalProgress, isoDateForMonthOffset, makeWeekSeries, monthLabel, monthShortLabel, toCents } from "@/lib/budget-math";
+import { formatMoney, getBudgetSummary, getForecast, goalProgress, isoDateForMonthOffset, makeWeekSeries, monthEnd, monthLabel, monthShortLabel, toCents, transactionsForMonth } from "@/lib/budget-math";
 import { parseMappedCsvRows, type ParsedCsvExpense } from "@/lib/csv";
 import type { AiSource, CoachPlan } from "@/lib/ai/types";
-import { routeForView, type WorkspaceView } from "@/lib/routes";
+import { resolveWorkspaceView, routeForView, type WorkspaceView } from "@/lib/routes";
 import { SignOutButton } from "@/components/sign-out-button";
 
 type WorkspaceMode = "demo" | "account";
@@ -153,20 +153,21 @@ export function BudgetWorkspace({
   const [showImport, setShowImport] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(initialCategory);
   const month = initialData.month;
+  const monthTransactions = useMemo(() => transactionsForMonth(transactions, month), [transactions, month]);
 
-  const summary = useMemo(() => getBudgetSummary(transactions, budgets), [transactions, budgets]);
+  const summary = useMemo(() => getBudgetSummary(monthTransactions, budgets), [monthTransactions, budgets]);
   const fixedSpendCents = useMemo(
-    () => transactions
+    () => monthTransactions
       .filter((transaction) => transaction.category === "Housing" || transaction.category === "Subscriptions")
       .reduce((total, transaction) => total + transaction.amountCents, 0),
-    [transactions],
+    [monthTransactions],
   );
   const forecast = useMemo(() => getForecast(summary.totalSpentCents, month, undefined, fixedSpendCents), [summary.totalSpentCents, month, fixedSpendCents]);
   const goalSummary = useMemo(() => goalProgress(goal), [goal]);
-  const weekSeries = useMemo(() => makeWeekSeries(transactions, month), [transactions, month]);
+  const weekSeries = useMemo(() => makeWeekSeries(monthTransactions, month), [monthTransactions, month]);
   const filteredTransactions = useMemo(
-    () => sortTransactions(categoryFilter === "all" ? transactions : transactions.filter((transaction) => transaction.category === categoryFilter)),
-    [categoryFilter, transactions],
+    () => sortTransactions(categoryFilter === "all" ? monthTransactions : monthTransactions.filter((transaction) => transaction.category === categoryFilter)),
+    [categoryFilter, monthTransactions],
   );
   const forecastDifference = summary.totalBudgetCents - forecast.forecastCents;
 
@@ -177,6 +178,21 @@ export function BudgetWorkspace({
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
+
+  useEffect(() => {
+    if (mode !== "demo") return;
+
+    function syncDemoUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const category = params.get("category");
+      setActiveView(resolveWorkspaceView(params.get("view")));
+      setCategoryFilter(categories.includes(category as Category) ? (category as Category) : "all");
+      setMobileOpen(false);
+    }
+
+    window.addEventListener("popstate", syncDemoUrl);
+    return () => window.removeEventListener("popstate", syncDemoUrl);
+  }, [mode]);
 
   useEffect(() => {
     if (!isMobileLayout || !mobileOpen) return;
@@ -320,7 +336,7 @@ export function BudgetWorkspace({
       savedTransaction = body.transaction;
     }
 
-    if (analysis && savedTransaction) {
+    if (analysis && savedTransaction && savedTransaction.occurredOn.startsWith(month)) {
       const categoryHealth = summary.categoryHealth.find((item) => item.category === savedTransaction.category);
       setLatestCategorization({
         transaction: savedTransaction,
@@ -369,7 +385,8 @@ export function BudgetWorkspace({
         });
       }
       setTransactions((items) => sortTransactions([...added, ...items]));
-      setNotice(`${added.length} CSV expenses imported${skipped ? `, ${skipped} duplicates skipped` : ""}.`);
+      const outsideMonth = added.filter((transaction) => !transaction.occurredOn.startsWith(month)).length;
+      setNotice(`${added.length} CSV expenses imported${skipped ? `, ${skipped} duplicates skipped` : ""}${outsideMonth ? `; ${outsideMonth} belong to other months` : ""}.`);
       return;
     }
 
@@ -380,7 +397,8 @@ export function BudgetWorkspace({
     });
     const body = await responseJson<{ imported: BudgetTransaction[]; skipped: number }>(response);
     setTransactions((items) => sortTransactions([...body.imported, ...items]));
-    setNotice(`${body.imported.length} CSV expenses imported${body.skipped ? `, ${body.skipped} duplicates skipped` : ""}.`);
+    const outsideMonth = body.imported.filter((transaction) => !transaction.occurredOn.startsWith(month)).length;
+    setNotice(`${body.imported.length} CSV expenses imported${body.skipped ? `, ${body.skipped} duplicates skipped` : ""}${outsideMonth ? `; ${outsideMonth} belong to other months` : ""}.`);
   }
 
   async function saveBudgets(event: FormEvent<HTMLFormElement>) {
@@ -511,7 +529,7 @@ export function BudgetWorkspace({
 
         {notice && <p className="sr-status" role="status">{notice}</p>}
         {latestCategorization && <LatestCategorizationCard value={latestCategorization} currency={profile.currency} onDismiss={() => setLatestCategorization(null)} onChangeCategory={() => openExpense(latestCategorization.transaction)} />}
-        {activeView === "dashboard" && <><div className="mobile-action-dock" aria-label="Quick actions"><button className="secondary-button" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div><DashboardView summary={summary} forecast={forecast} fixedSpendCents={fixedSpendCents} forecastDifference={forecastDifference} goal={goalSummary} profile={profile} transactions={transactions} weekSeries={weekSeries} coachPlan={coachPlan} coachProvenance={coachProvenance} coachState={coachState} coachError={coachError} isDemo={mode === "demo"} hasCategorization={Boolean(latestCategorization)} onAddExpense={() => openExpense()} onRefreshCoach={refreshCoach} onOpenTransactions={() => mode === "demo" ? activateDemoView("transactions") : window.location.assign(routeHref(mode, "transactions", month))} onDrilldown={drillIntoCategory} /></>}
+        {activeView === "dashboard" && <><div className="mobile-action-dock" aria-label="Quick actions"><button className="secondary-button" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div><DashboardView summary={summary} forecast={forecast} fixedSpendCents={fixedSpendCents} forecastDifference={forecastDifference} goal={goalSummary} profile={profile} transactions={monthTransactions} weekSeries={weekSeries} coachPlan={coachPlan} coachProvenance={coachProvenance} coachState={coachState} coachError={coachError} isDemo={mode === "demo"} hasCategorization={Boolean(latestCategorization)} onAddExpense={() => openExpense()} onRefreshCoach={refreshCoach} onOpenTransactions={() => mode === "demo" ? activateDemoView("transactions") : window.location.assign(routeHref(mode, "transactions", month))} onDrilldown={drillIntoCategory} /></>}
         {activeView === "transactions" && <TransactionsView transactions={filteredTransactions} filter={categoryFilter} onFilter={setCategoryFilter} profile={profile} onAdd={() => openExpense()} onImport={() => setShowImport(true)} onEdit={openExpense} onDelete={deleteExpense} />}
         {activeView === "budgets" && <BudgetsView budgetDraft={budgetDraft} summary={summary} profile={profile} onChange={(category, amountCents) => setBudgetDraft((items) => items.map((item) => item.category === category ? { ...item, limitCents: amountCents } : item))} onSubmit={saveBudgets} />}
         {activeView === "goals" && <GoalsView goal={goalDraft} goalSummary={goalSummary} profile={profile} onChange={setGoalDraft} onSubmit={saveGoal} />}
@@ -642,7 +660,7 @@ function ExpenseModal({ editing, month, onClose, onSubmit }: { editing: BudgetTr
     } catch (submissionError) { setError(submissionError instanceof Error ? submissionError.message : "Could not save this expense."); }
     finally { setState("idle"); }
   }
-  return <Modal title={editing ? "Edit expense" : "Add an expense"} onClose={onClose}><div className="modal-heading"><div><h2>{editing ? "Edit expense" : "Add an expense"}</h2><p>{editing ? "Correct the details or category. Your preference will help future entries." : "Leave category on auto to get an AI-assisted suggestion."}</p></div><button className="icon-button" onClick={onClose} aria-label="Close"><X /></button></div><form onSubmit={submit} className="modal-form"><label>Merchant<input value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={80} placeholder="Campus Market" /></label><label>Description<input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={180} placeholder="Groceries and snacks" /></label><div className="form-grid two"><label>Amount<span className="currency-field"><b>$</b><input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0.01" max="100000" step="0.01" required placeholder="0.00" /></span></label><label>Date<input value={occurredOn} onChange={(event) => setOccurredOn(event.target.value)} type="date" required /></label></div><label>Category<select value={category} onChange={(event) => setCategory(event.target.value as Category | "auto")}>{!editing && <option value="auto">Auto categorize</option>}{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button wide" disabled={state === "saving"}>{state === "saving" ? "Saving expense" : <><Sparkle weight="fill" /> {editing ? "Save changes" : "Categorize and add"}</>}</button></form></Modal>;
+  return <Modal title={editing ? "Edit expense" : "Add an expense"} onClose={onClose}><div className="modal-heading"><div><h2>{editing ? "Edit expense" : "Add an expense"}</h2><p>{editing ? "Correct the details or category. Your preference will help future entries." : "Leave category on auto to get an AI-assisted suggestion."}</p></div><button className="icon-button" onClick={onClose} aria-label="Close"><X /></button></div><form onSubmit={submit} className="modal-form"><label>Merchant<input value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={80} placeholder="Campus Market" /></label><label>Description<input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={180} placeholder="Groceries and snacks" /></label><div className="form-grid two"><label>Amount<span className="currency-field"><b>$</b><input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0.01" max="100000" step="0.01" required placeholder="0.00" /></span></label><label>Date<input value={occurredOn} onChange={(event) => setOccurredOn(event.target.value)} min={`${month}-01`} max={monthEnd(month)} type="date" required /></label></div><label>Category<select value={category} onChange={(event) => setCategory(event.target.value as Category | "auto")}>{!editing && <option value="auto">Auto categorize</option>}{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button wide" disabled={state === "saving"}>{state === "saving" ? "Saving expense" : <><Sparkle weight="fill" /> {editing ? "Save changes" : "Categorize and add"}</>}</button></form></Modal>;
 }
 
 function guessHeader(headers: string[], terms: string[]) {

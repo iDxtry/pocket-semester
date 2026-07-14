@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoWorkspace } from "../src/lib/budget";
-import { getBudgetSummary, getForecast, toCents } from "../src/lib/budget-math";
+import { getBudgetSummary, getForecast, toCents, transactionsForMonth } from "../src/lib/budget-math";
 
 test("money amounts are converted to integer cents", () => {
   assert.equal(toCents(12.345), 1235);
@@ -40,6 +40,14 @@ test("demo months have distinct budgets, spending, and term-safe dates", () => {
   assert.notEqual(getBudgetSummary(july.transactions, july.budgets).totalSpentCents, getBudgetSummary(august.transactions, august.budgets).totalSpentCents);
   assert.notDeepEqual(june.budgets, july.budgets);
   assert.ok(august.transactions.every((transaction) => transaction.occurredOn >= august.profile.semesterStart! && transaction.occurredOn <= august.profile.semesterEnd!));
+});
+
+test("month views ignore transactions that belong to a different month", () => {
+  const data = createDemoWorkspace("2026-07");
+  const outsideMonth = { ...data.transactions[0], id: "outside-month", occurredOn: "2026-06-30" };
+  const visible = transactionsForMonth([...data.transactions, outsideMonth], "2026-07");
+  assert.equal(visible.some((transaction) => transaction.id === outsideMonth.id), false);
+  assert.equal(visible.length, data.transactions.length);
 });
 
 test("forecast scales spending pace through the selected month", () => {

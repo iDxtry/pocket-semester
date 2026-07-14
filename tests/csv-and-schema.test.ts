@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { coachPlanSchema, expenseAnalysisSchema } from "../src/lib/ai/types";
-import { parseMappedCsvRows } from "../src/lib/csv";
-import { importTransactionsSchema } from "../src/lib/validation";
+import { normalizeCsvDate, parseMappedCsvRows } from "../src/lib/csv";
+import { importTransactionsSchema, isoDateSchema, monthSchema } from "../src/lib/validation";
 
 test("CSV mapping normalizes dates, currency strings, and valid categories", () => {
   const parsed = parseMappedCsvRows(
@@ -28,6 +28,15 @@ test("import route schema refuses invalid expenses", () => {
     transactions: [{ merchant: "Coffee", description: "", amountCents: -1, occurredOn: "2026-07-12" }],
   });
   assert.equal(parsed.success, false);
+});
+
+test("CSV and API date validation reject impossible calendar dates", () => {
+  assert.equal(normalizeCsvDate("2/31/2026"), "");
+  assert.equal(normalizeCsvDate("2026-02-29"), "");
+  assert.equal(isoDateSchema.safeParse("2026-02-28").success, true);
+  assert.equal(isoDateSchema.safeParse("2026-02-31").success, false);
+  assert.equal(monthSchema.safeParse("2026-13").success, false);
+  assert.equal(monthSchema.safeParse("2026-02").success, true);
 });
 
 test("AI structured outputs require bounded, usable content", () => {
