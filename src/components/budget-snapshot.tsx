@@ -14,7 +14,7 @@ export function BudgetSnapshot({ data, compact = false }: { data: WorkspaceData;
   return (
     <div className={compact ? "snapshot snapshot-compact" : "snapshot"} aria-label="Budget snapshot">
       <div className="snapshot-heading">
-        <span className="snapshot-label">Available this month</span>
+        <span className="snapshot-label">Plan remaining</span>
         <span className="snapshot-icon"><Wallet weight="fill" /></span>
       </div>
       <strong>{formatMoney(summary.availableCents, data.profile.currency)}</strong>
@@ -22,7 +22,7 @@ export function BudgetSnapshot({ data, compact = false }: { data: WorkspaceData;
         <span style={{ width: `${Math.min(summary.percentUsed, 100)}%` }} />
       </div>
       <div className="snapshot-meta">
-        <span>{summary.percentUsed}% planned spending used</span>
+        <span>{summary.percentUsed}% planned spending used · {formatMoney(Math.max(data.profile.monthlyAllowanceCents - summary.totalBudgetCents, 0), data.profile.currency)} buffer</span>
         <span className={underPlan >= 0 ? "snapshot-positive" : "snapshot-warning"}>
           {underPlan >= 0 ? <ArrowDown weight="bold" /> : <ArrowUp weight="bold" />}
           {underPlan >= 0 ? `${formatMoney(underPlan, data.profile.currency)} under forecast` : `${formatMoney(Math.abs(underPlan), data.profile.currency)} over forecast`}

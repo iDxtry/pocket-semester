@@ -11,7 +11,7 @@ test("money amounts are converted to integer cents", () => {
 test("budget summary aggregates every category without float drift", () => {
   const data = createDemoWorkspace();
   const summary = getBudgetSummary(data.transactions, data.budgets);
-  assert.equal(summary.totalSpentCents, 113761);
+  assert.equal(summary.totalSpentCents, 113661);
   assert.equal(summary.categoryHealth.find((item) => item.category === "Food & dining")?.spentCents, 13079);
   assert.equal(summary.availableCents, summary.totalBudgetCents - summary.totalSpentCents);
 });

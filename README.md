@@ -44,7 +44,7 @@ It deliberately excludes bank linking and receipt scanning from the MVP. Manual 
 | `/insights` | Structured coach plans and category watchouts. |
 | `/settings` | Profile settings and delete-my-data control. |
 
-The interface includes a mobile navigation drawer, keyboard-safe dialogs, loading and error states, visible focus styles, dark-mode support, and clear feedback around AI availability.
+The interface includes a mobile navigation drawer, keyboard-safe dialogs, loading and error states, visible focus styles, a consistent light-mode palette, and clear feedback around AI availability.
 
 ## Tech stack
 

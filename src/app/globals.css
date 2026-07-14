@@ -71,15 +71,16 @@ svg { flex: 0 0 auto; }
 .wide { width: 100%; }
 
 /* Authentication */
-.auth-page { width: 100%; min-height: 100dvh; display: grid; place-items: center; padding: 32px 20px; background: var(--background); }
-.auth-shell { width: min(100%, 430px); display: grid; justify-items: center; text-align: center; }
+.auth-page { width: 100%; min-width: 0; min-height: 100dvh; display: grid; place-items: center; padding: 32px 20px; overflow-x: clip; background: var(--background); }
+.auth-shell { width: min(100%, 430px); min-width: 0; display: grid; justify-items: center; text-align: center; }
 .auth-brand { margin-bottom: 38px; }
 .auth-copy { max-width: 390px; }
 .auth-kicker { margin: 0 0 11px; color: var(--accent-strong); font-size: 11px; font-weight: 690; }
 .auth-copy h1 { margin: 0; font-size: clamp(31px, 6vw, 43px); line-height: 1.02; letter-spacing: -0.06em; }
 .auth-copy > p:last-child { margin: 13px 0 25px; color: var(--muted); font-size: 14px; line-height: 1.55; }
-.auth-card { width: 100%; padding: clamp(20px, 5vw, 28px); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-.auth-clerk-card { width: 100% !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.auth-card { width: 100%; min-width: 0; padding: clamp(20px, 5vw, 28px); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.auth-card > * { width: 100%; max-width: 100%; min-width: 0; }
+.auth-clerk-card { width: 100% !important; max-width: 100% !important; min-width: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
 .auth-clerk-title { color: var(--foreground) !important; font-size: 22px !important; letter-spacing: -0.045em !important; }
 .auth-clerk-subtitle { color: var(--muted) !important; }
 .auth-clerk-social, .auth-clerk-input { border-color: var(--line) !important; border-radius: 9px !important; box-shadow: none !important; }
@@ -243,7 +244,8 @@ svg { flex: 0 0 auto; }
 .snapshot > strong { font: 620 clamp(31px, 3vw, 42px)/1 "Geist Mono", monospace; letter-spacing: -0.06em; }
 .snapshot-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--background); }
 .snapshot-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
-.snapshot-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }
+.snapshot-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 10px; }
+.snapshot-meta > span:first-child { min-width: 0; }
 .snapshot-meta > span:last-child { display: inline-flex; align-items: center; gap: 3px; text-align: right; }
 .snapshot-meta svg { width: 12px; height: 12px; }
 .snapshot-positive { color: var(--accent); }
@@ -434,6 +436,8 @@ svg { flex: 0 0 auto; }
   .landing-note .text-button { grid-column: 2; justify-self: start; }
   .landing-footer { padding-top: 22px; }
   .auth-page { padding: 24px 15px; }
+  .auth-shell, .auth-copy, .auth-card { width: 100%; max-width: 100%; min-width: 0; }
+  .auth-card { overflow: hidden; }
   .auth-brand { margin-bottom: 30px; }
   .sidebar { width: min(84vw, 292px); transform: translateX(-104%); box-shadow: 14px 0 35px rgb(0 0 0 / 0.15); transition: transform 220ms ease; }
   .sidebar-open { transform: translateX(0); }

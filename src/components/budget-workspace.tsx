@@ -95,6 +95,12 @@ function defaultDateForMonth(month: string) {
   return today.startsWith(month) ? today : `${month}-01`;
 }
 
+function confidenceLabel(confidence: number) {
+  if (confidence >= 0.85) return "High confidence";
+  if (confidence >= 0.7) return "Medium confidence";
+  return "Low confidence";
+}
+
 async function responseJson<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -139,6 +145,9 @@ export function BudgetWorkspace({
   const [latestCategorization, setLatestCategorization] = useState<LatestCategorization | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const mobileMenuRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mobilePreviousFocusRef = useRef<HTMLElement | null>(null);
   const [showExpense, setShowExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<BudgetTransaction | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -168,6 +177,45 @@ export function BudgetWorkspace({
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
+
+  useEffect(() => {
+    if (!isMobileLayout || !mobileOpen) return;
+
+    mobilePreviousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : mobileMenuRef.current;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const firstFocusable = sidebarRef.current?.querySelector<HTMLElement>("a[href], button:not([disabled]), [tabindex]:not([tabindex=\"-1\"])");
+    const focusIntoDrawer = window.requestAnimationFrame(() => firstFocusable?.focus());
+
+    function handleDrawerKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !sidebarRef.current) return;
+      const focusable = Array.from(sidebarRef.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), [tabindex]:not([tabindex=\"-1\"])")).filter((element) => !element.hasAttribute("inert") && element.getAttribute("aria-hidden") !== "true");
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleDrawerKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusIntoDrawer);
+      document.removeEventListener("keydown", handleDrawerKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+      const previousFocus = mobilePreviousFocusRef.current;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [isMobileLayout, mobileOpen]);
 
   function openExpense(transaction: BudgetTransaction | null = null) {
     setEditingExpense(transaction);
@@ -432,7 +480,7 @@ export function BudgetWorkspace({
     <div className="app-shell">
       <a className="skip-link" href="#workspace-main">Skip to workspace</a>
       {mobileOpen && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
-      <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`} aria-label="Primary navigation" aria-hidden={isMobileLayout && !mobileOpen ? true : undefined} inert={isMobileLayout && !mobileOpen ? true : undefined}>
+      <aside ref={sidebarRef} className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`} role={isMobileLayout && mobileOpen ? "dialog" : undefined} aria-modal={isMobileLayout && mobileOpen ? true : undefined} aria-label="Primary navigation" aria-hidden={isMobileLayout && !mobileOpen ? true : undefined} inert={isMobileLayout && !mobileOpen ? true : undefined}>
         <Link className="brand" href={mode === "demo" ? "/demo" : "/dashboard"}>
           <span className="brand-mark"><Wallet weight="fill" /></span><span>Pocket Semester</span>
         </Link>
@@ -456,7 +504,7 @@ export function BudgetWorkspace({
 
       <main className="dashboard" id="workspace-main" tabIndex={-1}>
         <header className="topbar">
-          <button className="mobile-menu" aria-label="Open navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><List /></button>
+          <button ref={mobileMenuRef} className="mobile-menu" aria-label="Open navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><List /></button>
           <div><p className="date-label">{title.eyebrow} · {monthLabel(month)}</p><h1>{title.heading}</h1><div className="mobile-month-controls" aria-label="Selected month"><button className="month-button" onClick={() => moveMonth(-1)} aria-label="Previous month"><CaretLeft /></button><span className="month-value"><CalendarBlank /> {monthShortLabel(month)}</span><button className="month-button" onClick={() => moveMonth(1)} aria-label="Next month"><CaretRight /></button></div></div>
           <div className="top-actions"><button className="month-button" onClick={() => moveMonth(-1)} aria-label="Previous month"><CaretLeft /></button><span className="month-value"><CalendarBlank /> {monthShortLabel(month)}</span><button className="month-button" onClick={() => moveMonth(1)} aria-label="Next month"><CaretRight /></button><button className="secondary-button top-import" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button top-add" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div>
         </header>
@@ -482,7 +530,7 @@ function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference,
 }) {
   return <>
     <section className="metrics" aria-label="Budget summary">
-      <article className="metric primary-metric"><div className="metric-heading"><span>Available this month</span><Wallet /></div><strong>{formatMoney(summary.availableCents, profile.currency)}</strong><p><ArrowUpRight weight="bold" /> {summary.percentUsed}% of your plan used</p><div className="budget-track" aria-label={`${summary.percentUsed}% of budget used`}><span style={{ width: `${Math.min(summary.percentUsed, 100)}%` }} /></div></article>
+      <article className="metric primary-metric"><div className="metric-heading"><span>Plan remaining</span><Wallet /></div><strong>{formatMoney(summary.availableCents, profile.currency)}</strong><p><ArrowUpRight weight="bold" /> {summary.percentUsed}% of plan used · {formatMoney(Math.max(profile.monthlyAllowanceCents - summary.totalBudgetCents, 0), profile.currency)} buffer</p><div className="budget-track" aria-label={`${summary.percentUsed}% of budget used`}><span style={{ width: `${Math.min(summary.percentUsed, 100)}%` }} /></div></article>
       <article className="metric"><div className="metric-heading"><span>End-of-month forecast</span><CurrencyDollar /></div><strong>{formatMoney(forecast.forecastCents, profile.currency)}</strong><p className={forecastDifference >= 0 ? "positive" : "negative"}>{forecastDifference >= 0 ? <ArrowDownRight weight="bold" /> : <ArrowUpRight weight="bold" />}{forecastDifference >= 0 ? `${formatMoney(forecastDifference, profile.currency)} below your plan` : `${formatMoney(Math.abs(forecastDifference), profile.currency)} above your plan`}</p></article>
       <article className="metric"><div className="metric-heading"><span>{goal?.name ?? "Savings goal"}</span><Target /></div><strong>{goal ? formatMoney(goal.currentCents, profile.currency) : "Set a goal"}{goal && <small> of {formatMoney(goal.targetCents, profile.currency)}</small>}</strong><p>{goal ? `${goal.percent}% funded with ${formatMoney(goal.remainingCents, profile.currency)} left to save` : "Add a goal to keep your cushion visible."}</p></article>
     </section>
@@ -512,7 +560,7 @@ function LatestCategorizationCard({ value, currency, onDismiss, onChangeCategory
   const localResult = analysis.source === "local";
   const provenance = analysis.source === "openai" ? `Categorized by ${analysis.model}` : analysis.source === "gemini" ? `Development AI · ${analysis.model}` : "Quick local category";
   const budgetEffect = categoryLimitCents > 0 ? `${formatMoney(projectedCategorySpentCents, currency)} of ${formatMoney(categoryLimitCents, currency)}` : "No category limit set";
-  return <section className="categorization-card" aria-label="Latest expense categorization"><div className="categorization-card-heading"><div><span className="ai-label">{provenance}</span><h2>{transaction.merchant} is in {analysis.category}</h2><p>{localResult ? "This is a local rule-based suggestion, not a live AI response." : `${Math.round(analysis.confidence * 100)}% confidence · ${analysis.insight}`}</p></div><button className="icon-button quiet" onClick={onDismiss} aria-label="Dismiss latest categorization"><X /></button></div><div className="categorization-details"><div><small>Why</small><strong>{analysis.action}</strong></div><div><small>Category total after this expense</small><strong>{budgetEffect}</strong></div></div><div className="categorization-actions"><button className="secondary-button" onClick={onChangeCategory}><PencilSimple /> Change category</button><button className="text-button" onClick={onDismiss}>Keep it <CheckCircle weight="bold" /></button></div></section>;
+  return <section className="categorization-card" aria-label="Latest expense categorization"><div className="categorization-card-heading"><div><span className="ai-label">{provenance}</span><h2>{transaction.merchant} is in {analysis.category}</h2><p>{localResult ? "This is a local rule-based suggestion, not a live AI response." : `${confidenceLabel(analysis.confidence)} · ${analysis.insight}`}</p></div><button className="icon-button quiet" onClick={onDismiss} aria-label="Dismiss latest categorization"><X /></button></div><div className="categorization-details"><div><small>Why</small><strong>{analysis.action}</strong></div><div><small>Category total after this expense</small><strong>{budgetEffect}</strong></div></div><div className="categorization-actions"><button className="secondary-button" onClick={onChangeCategory}><PencilSimple /> Change category</button><button className="text-button" onClick={onDismiss}>Keep it <CheckCircle weight="bold" /></button></div></section>;
 }
 
 function TransactionRow({ transaction, currency, actions }: { transaction: BudgetTransaction; currency: string; actions?: ReactNode }) {
