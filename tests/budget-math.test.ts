@@ -11,9 +11,24 @@ test("money amounts are converted to integer cents", () => {
 test("budget summary aggregates every category without float drift", () => {
   const data = createDemoWorkspace();
   const summary = getBudgetSummary(data.transactions, data.budgets);
-  assert.equal(summary.totalSpentCents, 99637);
-  assert.equal(summary.categoryHealth.find((item) => item.category === "Food & dining")?.spentCents, 5093);
+  assert.equal(summary.totalSpentCents, 113761);
+  assert.equal(summary.categoryHealth.find((item) => item.category === "Food & dining")?.spentCents, 13079);
   assert.equal(summary.availableCents, summary.totalBudgetCents - summary.totalSpentCents);
+});
+
+test("demo data keeps its plan inside the allowance and its activity inside the active term", () => {
+  for (const month of ["2026-03", "2026-07", "2026-10"]) {
+    const data = createDemoWorkspace(month);
+    const totalBudget = data.budgets.reduce((total, budget) => total + budget.limitCents, 0);
+
+    assert.ok(totalBudget <= data.profile.monthlyAllowanceCents);
+    assert.ok(data.profile.semesterStart);
+    assert.ok(data.profile.semesterEnd);
+    for (const transaction of data.transactions) {
+      assert.ok(transaction.occurredOn >= data.profile.semesterStart!);
+      assert.ok(transaction.occurredOn <= data.profile.semesterEnd!);
+    }
+  }
 });
 
 test("forecast scales spending pace through the selected month", () => {

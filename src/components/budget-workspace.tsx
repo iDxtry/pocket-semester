@@ -2,6 +2,7 @@
 
 import { FormEvent, KeyboardEvent, ReactNode, useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
+import { SignOutButton } from "@clerk/nextjs";
 import Papa from "papaparse";
 import {
   ArrowDownRight,
@@ -23,6 +24,7 @@ import {
   Plus,
   Receipt,
   ShieldCheck,
+  SignOut,
   Sparkle,
   Target,
   Trash,
@@ -53,8 +55,8 @@ type LatestCategorization = {
 };
 
 const demoExampleCoachPlan: CoachPlan = {
-  summary: "Your fictional semester plan still has room for a few choices this week. Protect food spending now to keep your emergency cushion on pace.",
-  watchouts: [{ category: "Food & dining", message: "Food is the most flexible part of this sample budget, so small meal choices move the forecast fastest." }],
+  summary: "Your fictional summer plan still has room for the rest of the month. Keep food spending deliberate so the emergency cushion can stay on pace.",
+  watchouts: [{ category: "Food & dining", message: "Food is the most flexible part of this sample plan, so small meal choices move the forecast fastest." }],
   actions: [
     { title: "Choose two lower-cost campus meals", detail: "Use your meal plan or a grocery option twice before the weekend instead of another convenience purchase.", estimatedImpactCents: 1800 },
     { title: "Pause one optional purchase", detail: "Give a non-essential purchase 48 hours before deciding so your emergency goal stays protected.", estimatedImpactCents: 1200 },
@@ -441,8 +443,15 @@ export function BudgetWorkspace({
             </Link>
           ))}
         </nav>
-        <div className="sidebar-note"><Sparkle weight="fill" /><p><strong>{mode === "demo" ? "Fictional data, real interactions." : "Small changes add up."}</strong>{mode === "demo" ? " This workspace resets when you reload." : " Your private budget lives only in your account."}</p></div>
-        <Link className="student-profile" href={routeHref(mode, "settings", month)} onClick={(event) => handleNavigation(event, "settings")}><span className="avatar">{profile.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{profile.displayName}</strong><small>{mode === "demo" ? "Public demo" : "Student plan"}</small></span></Link>
+        <div className="sidebar-note"><p><strong>{mode === "demo" ? "Fictional data, real interactions." : "Small choices add up."}</strong>{mode === "demo" ? " This workspace resets when you reload." : " Your private budget lives only in your account."}</p></div>
+        {mode === "demo" ? (
+          <Link className="student-profile" href={routeHref(mode, "settings", month)} onClick={(event) => handleNavigation(event, "settings")}><span className="avatar">{profile.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{profile.displayName}</strong><small>Public demo</small></span></Link>
+        ) : (
+          <div className="account-footer">
+            <Link className="student-profile" href={routeHref(mode, "settings", month)}><span className="avatar">{profile.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{profile.displayName}</strong><small>Student plan</small></span></Link>
+            <SignOutButton redirectUrl="/"><button className="sidebar-signout" type="button"><SignOut /> Sign out</button></SignOutButton>
+          </div>
+        )}
       </aside>
 
       <main className="dashboard" id="workspace-main" tabIndex={-1}>
@@ -491,11 +500,11 @@ function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference,
 }
 
 function DemoChecklist({ hasCategorization, hasRefreshedPlan, onAddExpense, onRefreshPlan }: { hasCategorization: boolean; hasRefreshedPlan: boolean; onAddExpense: () => void; onRefreshPlan: () => void }) {
-  return <section className="demo-checklist" aria-label="60-second demo path"><div><p className="eyebrow">60-second demo</p><h2>See the whole student budget loop.</h2><p>Everything here is fictional and resets when you reload.</p></div><ol><li className="demo-step"><span>{hasCategorization ? <CheckCircle weight="fill" /> : "01"}</span><div><strong>Add a fictional expense</strong><p>Start with one purchase to make the numbers move.</p></div><button className="text-button" onClick={onAddExpense}>Add expense <ArrowRight /></button></li><li className="demo-step"><span>{hasCategorization ? <CheckCircle weight="fill" /> : "02"}</span><div><strong>See the category and forecast</strong><p>Review the confidence, rationale, and budget effect.</p></div></li><li className="demo-step"><span>{hasRefreshedPlan ? <CheckCircle weight="fill" /> : "03"}</span><div><strong>Refresh your plan</strong><p>Get the updated coach response for this fictional month.</p></div><button className="text-button" onClick={onRefreshPlan}>Refresh plan <ArrowRight /></button></li></ol></section>;
+  return <section className="demo-progress" aria-label="60-second demo path"><div className="demo-progress-heading"><span>60-second demo</span><p>Fictional data · resets on reload</p></div><ol><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "1"}</span><strong>Add an expense</strong><button className="text-button" onClick={onAddExpense}>Try it <ArrowRight /></button></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "2"}</span><strong>See category and forecast</strong></li><li className={hasRefreshedPlan ? "complete" : ""}><span>{hasRefreshedPlan ? <CheckCircle weight="fill" /> : "3"}</span><strong>Refresh the plan</strong><button className="text-button" onClick={onRefreshPlan}>Refresh <ArrowRight /></button></li></ol></section>;
 }
 
 function ForecastExplainer({ forecast, fixedSpendCents, currency }: { forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; currency: string }) {
-  return <section className="forecast-explainer" aria-label="How the month-end forecast works"><div><p className="eyebrow">Why this forecast</p><h2>A fixed foundation plus your flexible pace.</h2><p>Already-paid rent and subscriptions stay fixed. Only the rest of your spending is paced through the remaining days.</p></div><dl><div><dt>Fixed spending</dt><dd>{formatMoney(fixedSpendCents, currency)}</dd></div><div><dt>Flexible daily pace</dt><dd>{formatMoney(forecast.flexibleDailyPaceCents, currency)}</dd></div><div><dt>Projected month end</dt><dd>{formatMoney(forecast.forecastCents, currency)}</dd></div><div><dt>Days left</dt><dd>{forecast.daysRemaining}</dd></div></dl></section>;
+  return <section className="forecast-explainer" aria-label="How the month-end forecast works"><div><p className="eyebrow">Forecast</p><h2>Where this month is headed.</h2><p>Housing and subscriptions are fixed. Everything else follows the flexible pace you have set so far.</p></div><dl><div><dt>Fixed spending</dt><dd>{formatMoney(fixedSpendCents, currency)}</dd></div><div><dt>Flexible daily pace</dt><dd>{formatMoney(forecast.flexibleDailyPaceCents, currency)}</dd></div><div><dt>Projected month end</dt><dd>{formatMoney(forecast.forecastCents, currency)}</dd></div><div><dt>Days left</dt><dd>{forecast.daysRemaining}</dd></div></dl></section>;
 }
 
 function LatestCategorizationCard({ value, currency, onDismiss, onChangeCategory }: { value: LatestCategorization; currency: string; onDismiss: () => void; onChangeCategory: () => void }) {
@@ -534,7 +543,7 @@ function SettingsView({ profile, mode, onSubmit, onDelete }: { profile: StudentP
 function CoachCard({ coachPlan, provenance, state, error, currency, onRefresh, compact = false }: { coachPlan: CoachPlan | null; provenance: CoachProvenance | null; state: "idle" | "loading"; error: string; currency: string; onRefresh: () => void; compact?: boolean }) {
   const isExample = provenance?.source === "example";
   const label = provenance?.source === "openai" ? `Powered by ${provenance.model}` : provenance?.source === "gemini" ? `Development AI · ${provenance.model}` : isExample ? "Example plan · fictional data" : "Guided coach";
-  return <article className={`coach-card ${compact ? "coach-card-compact" : ""}`}><div className="coach-card-top"><span className="insight-icon"><Brain weight="fill" /></span><div><span className="ai-label">{label}</span><h2>{coachPlan ? coachPlan.summary : "Ready when you want a focused plan."}</h2></div></div>{isExample && <p className="coach-example-note">This sample plan is preloaded for the fictional demo. Refresh after a change to request a fresh provider result.</p>}{coachPlan ? <><div className="coach-actions">{coachPlan.actions.map((action) => <div key={action.title}><strong>{action.title}</strong><p>{action.detail}</p><small>Estimated room: {formatMoney(action.estimatedImpactCents, currency)}</small></div>)}</div><div className="coach-total"><Sparkle weight="fill" /> Estimated impact: {formatMoney(coachPlan.estimatedImpactCents, currency)}</div></> : <p className="coach-empty">Refresh your plan to get two or three practical actions based on this month’s spending, category limits, and goal.</p>} {error && <p className="form-error" role="alert">{error}</p>}<button className="coach-refresh" onClick={onRefresh} disabled={state === "loading"}>{state === "loading" ? "Building your plan" : isExample ? "Refresh after your change" : coachPlan ? "Refresh plan" : "Build my spending plan"}<ArrowRight weight="bold" /></button></article>;
+  return <article className={`coach-card ${compact ? "coach-card-compact" : ""}`}><div className="coach-card-top"><span className="insight-icon"><ChartDonut weight="fill" /></span><div><span className="ai-label">{label}</span><h2>{coachPlan ? coachPlan.summary : "Ready when you want a focused plan."}</h2></div></div>{isExample && <p className="coach-example-note">This sample plan is preloaded for the fictional demo. Refresh after a change to request a fresh provider result.</p>}{coachPlan ? <><div className="coach-actions">{coachPlan.actions.map((action) => <div key={action.title}><strong>{action.title}</strong><p>{action.detail}</p><small>Estimated room: {formatMoney(action.estimatedImpactCents, currency)}</small></div>)}</div><div className="coach-total">Estimated impact: {formatMoney(coachPlan.estimatedImpactCents, currency)}</div></> : <p className="coach-empty">Refresh your plan to get two or three practical actions based on this month’s spending, category limits, and goal.</p>} {error && <p className="form-error" role="alert">{error}</p>}<button className="coach-refresh" onClick={onRefresh} disabled={state === "loading"}>{state === "loading" ? "Building your plan" : isExample ? "Refresh after your change" : coachPlan ? "Refresh plan" : "Build my spending plan"}<ArrowRight weight="bold" /></button></article>;
 }
 
 function EmptyState({ icon, title, copy, compact = false }: { icon: ReactNode; title: string; copy: string; compact?: boolean }) {

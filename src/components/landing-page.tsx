@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Brain, CheckCircle, LockKey, Sparkle, Target, UploadSimple } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, LockKey, Target, UploadSimple, Wallet } from "@phosphor-icons/react/dist/ssr";
 import { BudgetSnapshot } from "@/components/budget-snapshot";
 import { createDemoWorkspace } from "@/lib/budget";
 
@@ -10,7 +10,7 @@ export function LandingPage() {
     <main className="landing">
       <header className="landing-nav">
         <Link className="brand" href="/">
-          <span className="brand-mark"><Sparkle weight="fill" /></span>
+          <span className="brand-mark"><Wallet weight="fill" /></span>
           <span>Pocket Semester</span>
         </Link>
         <nav aria-label="Landing navigation">
@@ -21,43 +21,34 @@ export function LandingPage() {
 
       <section className="landing-hero">
         <div className="hero-copy">
-          <p className="eyebrow"><Sparkle weight="fill" /> A calmer way to spend the semester</p>
-          <h1>Know what today costs your future self.</h1>
-          <p className="hero-lede">Pocket Semester turns everyday student spending into clear budget health, a realistic month-end forecast, and one practical next step.</p>
+          <p className="eyebrow">Student spending, in order</p>
+          <h1>A budget that keeps the semester in view.</h1>
+          <p className="hero-lede">Pocket Semester helps students record everyday spending, understand the month ahead, and make one useful next move without turning budgeting into a chore.</p>
           <div className="hero-actions">
-            <Link href="/demo" className="primary-button"><Sparkle weight="fill" /> Try the 60-second demo <ArrowRight weight="bold" /></Link>
-            <Link href="/sign-up" className="secondary-button">Start a private budget</Link>
+            <Link href="/demo" className="primary-button">Try the 60-second demo <ArrowRight weight="bold" /></Link>
+            <Link href="/sign-up" className="secondary-button">Create a private budget</Link>
           </div>
-          <div className="hero-trust"><LockKey weight="fill" /> No sign-up · fictional data · no bank credentials · educational guidance only.</div>
+          <div className="hero-trust"><LockKey weight="fill" /> No sign-up · fictional data · no bank credentials</div>
         </div>
         <div className="hero-workspace">
-          <div className="preview-caption"><span>Interactive sample workspace</span><Link href="/demo">Open it <ArrowRight weight="bold" /></Link></div>
+          <div className="preview-caption"><span>Example student plan</span><Link href="/demo">Open demo <ArrowRight weight="bold" /></Link></div>
           <BudgetSnapshot data={demoData} />
-          <div className="preview-insight">
-            <span className="preview-insight-icon"><Brain weight="fill" /></span>
-            <div><small>Budget coach</small><strong>Food spending is flexible this week. A simple campus-meal plan can protect your emergency goal.</strong></div>
-          </div>
+          <div className="preview-footnote"><span>Summer session</span><strong>$145 remains unassigned as a buffer.</strong></div>
         </div>
       </section>
 
-      <section className="landing-proof" aria-label="Pocket Semester features">
-        <article><span><UploadSimple weight="fill" /></span><h2>Bring your real spending</h2><p>Add an expense in seconds or preview a CSV import before anything is saved.</p></article>
-        <article><span><Target weight="fill" /></span><h2>Plan for the semester</h2><p>Set category limits and an emergency goal that stay visible while you spend.</p></article>
-        <article><span><Brain weight="fill" /></span><h2>Get a concrete next move</h2><p>Refresh a focused spending plan that calls out tradeoffs without guilt.</p></article>
-      </section>
-
-      <section className="landing-flow">
-        <div><p className="eyebrow">Built for the way students budget</p><h2>From purchase to perspective in one short loop.</h2></div>
+      <section className="landing-ledger" aria-labelledby="ledger-heading">
+        <div className="landing-ledger-intro"><p className="eyebrow">A short loop</p><h2 id="ledger-heading">Capture the spending. See the month. Choose the next move.</h2></div>
         <ol>
-          <li><span>01</span><div><strong>Capture</strong><p>Log an expense, edit a category, or upload a CSV.</p></div></li>
-          <li><span>02</span><div><strong>See the tradeoff</strong><p>Watch category health and your end-of-month forecast update.</p></div></li>
-          <li><span>03</span><div><strong>Choose one action</strong><p>Use the coach plan to protect room for what matters this semester.</p></div></li>
+          <li><span>01</span><div><strong>Capture</strong><p>Add an expense in seconds or bring in a CSV when you need to catch up.</p></div><UploadSimple weight="bold" /></li>
+          <li><span>02</span><div><strong>Forecast</strong><p>Watch category limits, fixed costs, and flexible pace turn into a clear month-end view.</p></div><Wallet weight="bold" /></li>
+          <li><span>03</span><div><strong>Act</strong><p>Use the coach as a focused prompt for one practical adjustment, not a lecture.</p></div><Target weight="bold" /></li>
         </ol>
       </section>
 
-      <section className="landing-privacy">
-        <div className="privacy-icon"><CheckCircle weight="fill" /></div>
-        <div><h2>Designed to keep personal money personal.</h2><p>Each signed-in account has private data ownership, a delete-my-data control, and no bank-linking requirement. Pocket Semester is not financial, tax, or investment advice.</p></div>
+      <section className="landing-note">
+        <LockKey weight="fill" />
+        <div><h2>Personal money stays personal.</h2><p>Signed-in workspaces are private, data can be deleted, and Pocket Semester never asks for bank credentials. Budget guidance is educational only.</p></div>
         <Link href="/demo" className="text-button">See the sample data <ArrowRight weight="bold" /></Link>
       </section>
 
