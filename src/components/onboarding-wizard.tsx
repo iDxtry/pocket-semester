@@ -18,7 +18,7 @@ export function OnboardingWizard() {
     currency: "USD",
     semesterStart: "2026-08-24",
     semesterEnd: "2026-12-18",
-    monthlyAllowance: "1692",
+    monthlyAllowance: "1850",
   });
   const [budgetValues, setBudgetValues] = useState<Record<Category, string>>(
     Object.fromEntries(categories.map((category) => [category, dollarsFromCents(defaultBudgetLimits[category])])) as Record<Category, string>,
