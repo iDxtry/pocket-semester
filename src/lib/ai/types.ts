@@ -8,8 +8,11 @@ export const expenseAnalysisSchema = z.object({
   action: z.string().trim().min(1).max(180),
 });
 
+export const aiSourceSchema = z.enum(["openai", "gemini", "local"]);
+
 export const analysisResultSchema = expenseAnalysisSchema.extend({
-  source: z.enum(["gemini", "local"]),
+  source: aiSourceSchema,
+  model: z.string().trim().min(1).max(120).nullable(),
 });
 
 export const coachContextSchema = z.object({
@@ -59,7 +62,8 @@ export const coachPlanSchema = z.object({
 export type ExpenseAnalysis = z.infer<typeof analysisResultSchema>;
 export type CoachContext = z.infer<typeof coachContextSchema>;
 export type CoachPlan = z.infer<typeof coachPlanSchema>;
+export type AiSource = z.infer<typeof aiSourceSchema>;
 
 export type CoachResult =
-  | { status: "ready"; plan: CoachPlan; source: "gemini"; model: string }
+  | { status: "ready"; plan: CoachPlan; source: Exclude<AiSource, "local">; model: string }
   | { status: "unavailable"; reason: string };

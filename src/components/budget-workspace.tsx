@@ -35,14 +35,32 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } f
 import { categories, categoryColors, type BudgetTransaction, type Category, type CategoryBudget, type StudentGoal, type StudentProfile, type WorkspaceData } from "@/lib/budget";
 import { formatMoney, getBudgetSummary, getForecast, goalProgress, isoDateForMonthOffset, makeWeekSeries, monthLabel, monthShortLabel, toCents } from "@/lib/budget-math";
 import { parseMappedCsvRows, type ParsedCsvExpense } from "@/lib/csv";
-import type { CoachPlan } from "@/lib/ai/types";
+import type { AiSource, CoachPlan } from "@/lib/ai/types";
 import { routeForView, type WorkspaceView } from "@/lib/routes";
 
 type WorkspaceMode = "demo" | "account";
 type CategoryFilter = Category | "all";
 type ExpenseFormValues = { merchant: string; description: string; amountCents: number; occurredOn: string; category: Category | null };
 type CsvDraftRow = ParsedCsvExpense;
-type ExpenseAnalysisResponse = { category: Category; confidence: number; source: "gemini" | "local"; insight: string; action: string };
+type ExpenseAnalysisResponse = { category: Category; confidence: number; source: AiSource; model: string | null; insight: string; action: string };
+type CoachResponse = { plan: CoachPlan; source: Exclude<AiSource, "local">; model: string };
+type CoachProvenance = { source: AiSource | "example"; model: string | null };
+type LatestCategorization = {
+  transaction: BudgetTransaction;
+  analysis: ExpenseAnalysisResponse;
+  projectedCategorySpentCents: number;
+  categoryLimitCents: number;
+};
+
+const demoExampleCoachPlan: CoachPlan = {
+  summary: "Your fictional semester plan still has room for a few choices this week. Protect food spending now to keep your emergency cushion on pace.",
+  watchouts: [{ category: "Food & dining", message: "Food is the most flexible part of this sample budget, so small meal choices move the forecast fastest." }],
+  actions: [
+    { title: "Choose two lower-cost campus meals", detail: "Use your meal plan or a grocery option twice before the weekend instead of another convenience purchase.", estimatedImpactCents: 1800 },
+    { title: "Pause one optional purchase", detail: "Give a non-essential purchase 48 hours before deciding so your emergency goal stays protected.", estimatedImpactCents: 1200 },
+  ],
+  estimatedImpactCents: 3000,
+};
 
 const navigation: Array<{ view: WorkspaceView; label: string; Icon: typeof House }> = [
   { view: "dashboard", label: "Overview", Icon: House },
@@ -111,11 +129,14 @@ export function BudgetWorkspace({
   const [goalDraft, setGoalDraft] = useState<StudentGoal>(initialData.goal ?? {
     name: "Emergency cushion", kind: "emergency", targetCents: 100000, currentCents: 0, targetDate: null,
   });
-  const [coachPlan, setCoachPlan] = useState<CoachPlan | null>(initialCoachPlan);
+  const [coachPlan, setCoachPlan] = useState<CoachPlan | null>(() => initialCoachPlan ?? (mode === "demo" ? demoExampleCoachPlan : null));
+  const [coachProvenance, setCoachProvenance] = useState<CoachProvenance | null>(() => initialCoachPlan ? null : mode === "demo" ? { source: "example", model: null } : null);
   const [coachState, setCoachState] = useState<"idle" | "loading">("idle");
   const [coachError, setCoachError] = useState("");
   const [notice, setNotice] = useState("");
+  const [latestCategorization, setLatestCategorization] = useState<LatestCategorization | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<BudgetTransaction | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -137,6 +158,19 @@ export function BudgetWorkspace({
     [categoryFilter, transactions],
   );
   const forecastDifference = summary.totalBudgetCents - forecast.forecastCents;
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const update = () => setIsMobileLayout(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  function openExpense(transaction: BudgetTransaction | null = null) {
+    setEditingExpense(transaction);
+    setShowExpense(true);
+  }
 
   function activateDemoView(view: WorkspaceView) {
     setActiveView(view);
@@ -188,23 +222,30 @@ export function BudgetWorkspace({
 
     let analysis: ExpenseAnalysisResponse | null = null;
     let category = values.category;
+    let analysisUnavailable = false;
     if (!category) {
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          merchant: values.merchant,
-          description: values.description,
-          amountCents: values.amountCents,
-          occurredOn: values.occurredOn,
-          monthlySpentCents: summary.totalSpentCents,
-          monthlyBudgetCents: Math.max(summary.totalBudgetCents, 1),
-        }),
-      });
-      analysis = await responseJson<ExpenseAnalysisResponse>(response);
-      category = analysis.category;
+      try {
+        const response = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            merchant: values.merchant,
+            description: values.description,
+            amountCents: values.amountCents,
+            occurredOn: values.occurredOn,
+            monthlySpentCents: summary.totalSpentCents,
+            monthlyBudgetCents: Math.max(summary.totalBudgetCents, 1),
+          }),
+        });
+        analysis = await responseJson<ExpenseAnalysisResponse>(response);
+        category = analysis.category;
+      } catch {
+        analysisUnavailable = true;
+        category = "Other";
+      }
     }
 
+    let savedTransaction: BudgetTransaction | null = null;
     if (mode === "demo") {
       const transaction: BudgetTransaction = {
         id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `demo-${Date.now()}`,
@@ -217,6 +258,7 @@ export function BudgetWorkspace({
         source: "demo",
       };
       setTransactions((items) => sortTransactions([transaction, ...items]));
+      savedTransaction = transaction;
     } else {
       const response = await fetch("/api/transactions", {
         method: "POST",
@@ -225,8 +267,25 @@ export function BudgetWorkspace({
       });
       const body = await responseJson<{ transaction: BudgetTransaction }>(response);
       setTransactions((items) => sortTransactions([body.transaction, ...items]));
+      savedTransaction = body.transaction;
     }
-    setNotice(analysis?.source === "local" ? "Expense saved with a quick local category. Your AI plan was not refreshed." : "Expense saved and budget health refreshed.");
+
+    if (analysis && savedTransaction) {
+      const categoryHealth = summary.categoryHealth.find((item) => item.category === savedTransaction.category);
+      setLatestCategorization({
+        transaction: savedTransaction,
+        analysis,
+        projectedCategorySpentCents: (categoryHealth?.spentCents ?? 0) + savedTransaction.amountCents,
+        categoryLimitCents: categoryHealth?.limitCents ?? 0,
+      });
+    }
+    setNotice(
+      analysisUnavailable
+        ? "Expense saved in Other. Auto-categorization could not be refreshed, so you can correct the category anytime."
+        : analysis?.source === "local"
+          ? "Expense saved with a quick local category. Your AI plan was not refreshed."
+          : "Expense saved and budget health refreshed.",
+    );
   }
 
   async function deleteExpense(transaction: BudgetTransaction) {
@@ -327,8 +386,9 @@ export function BudgetWorkspace({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(mode === "demo" ? { demo: true, ...coachContext } : { month }),
       });
-      const body = await responseJson<{ plan: CoachPlan }>(response);
+      const body = await responseJson<CoachResponse>(response);
       setCoachPlan(body.plan);
+      setCoachProvenance({ source: body.source, model: body.model });
       setNotice("Your personalized spending plan is ready.");
     } catch (error) {
       setCoachError(error instanceof Error ? error.message : "Your personalized plan could not be refreshed.");
@@ -368,14 +428,15 @@ export function BudgetWorkspace({
   const title = viewTitles[activeView];
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#workspace-main">Skip to workspace</a>
       {mobileOpen && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
-      <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`} aria-label="Primary navigation">
+      <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`} aria-label="Primary navigation" aria-hidden={isMobileLayout && !mobileOpen ? true : undefined} inert={isMobileLayout && !mobileOpen ? true : undefined}>
         <Link className="brand" href={mode === "demo" ? "/demo" : "/dashboard"}>
           <span className="brand-mark"><Wallet weight="fill" /></span><span>Pocket Semester</span>
         </Link>
         <nav className="nav-list">
           {navigation.map(({ view, label, Icon }) => (
-            <Link key={view} className={`nav-item ${activeView === view ? "active" : ""}`} href={routeHref(mode, view, month)} onClick={(event) => handleNavigation(event, view)}>
+            <Link key={view} className={`nav-item ${activeView === view ? "active" : ""}`} href={routeHref(mode, view, month)} onClick={(event) => handleNavigation(event, view)} aria-current={activeView === view ? "page" : undefined}>
               <Icon weight={activeView === view ? "fill" : "regular"} />{label}
             </Link>
           ))}
@@ -384,19 +445,20 @@ export function BudgetWorkspace({
         <Link className="student-profile" href={routeHref(mode, "settings", month)} onClick={(event) => handleNavigation(event, "settings")}><span className="avatar">{profile.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{profile.displayName}</strong><small>{mode === "demo" ? "Public demo" : "Student plan"}</small></span></Link>
       </aside>
 
-      <main className="dashboard" id="top">
+      <main className="dashboard" id="workspace-main" tabIndex={-1}>
         <header className="topbar">
           <button className="mobile-menu" aria-label="Open navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><List /></button>
-          <div><p className="date-label">{title.eyebrow} · {monthLabel(month)}</p><h1>{title.heading}</h1></div>
-          <div className="top-actions"><button className="month-button" onClick={() => moveMonth(-1)} aria-label="Previous month"><CaretLeft /></button><span className="month-value"><CalendarBlank /> {monthShortLabel(month)}</span><button className="month-button" onClick={() => moveMonth(1)} aria-label="Next month"><CaretRight /></button><button className="secondary-button top-import" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button top-add" onClick={() => { setEditingExpense(null); setShowExpense(true); }}><Plus weight="bold" /> Add expense</button></div>
+          <div><p className="date-label">{title.eyebrow} · {monthLabel(month)}</p><h1>{title.heading}</h1><div className="mobile-month-controls" aria-label="Selected month"><button className="month-button" onClick={() => moveMonth(-1)} aria-label="Previous month"><CaretLeft /></button><span className="month-value"><CalendarBlank /> {monthShortLabel(month)}</span><button className="month-button" onClick={() => moveMonth(1)} aria-label="Next month"><CaretRight /></button></div></div>
+          <div className="top-actions"><button className="month-button" onClick={() => moveMonth(-1)} aria-label="Previous month"><CaretLeft /></button><span className="month-value"><CalendarBlank /> {monthShortLabel(month)}</span><button className="month-button" onClick={() => moveMonth(1)} aria-label="Next month"><CaretRight /></button><button className="secondary-button top-import" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button top-add" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div>
         </header>
 
         {notice && <p className="sr-status" role="status">{notice}</p>}
-        {activeView === "dashboard" && <DashboardView summary={summary} forecast={forecast} forecastDifference={forecastDifference} goal={goalSummary} profile={profile} transactions={transactions} weekSeries={weekSeries} coachPlan={coachPlan} coachState={coachState} coachError={coachError} onRefreshCoach={refreshCoach} onOpenTransactions={() => mode === "demo" ? activateDemoView("transactions") : window.location.assign(routeHref(mode, "transactions", month))} onDrilldown={drillIntoCategory} />}
-        {activeView === "transactions" && <TransactionsView transactions={filteredTransactions} filter={categoryFilter} onFilter={setCategoryFilter} profile={profile} onAdd={() => { setEditingExpense(null); setShowExpense(true); }} onImport={() => setShowImport(true)} onEdit={(transaction) => { setEditingExpense(transaction); setShowExpense(true); }} onDelete={deleteExpense} />}
+        {latestCategorization && <LatestCategorizationCard value={latestCategorization} currency={profile.currency} onDismiss={() => setLatestCategorization(null)} onChangeCategory={() => openExpense(latestCategorization.transaction)} />}
+        {activeView === "dashboard" && <><div className="mobile-action-dock" aria-label="Quick actions"><button className="secondary-button" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div><DashboardView summary={summary} forecast={forecast} fixedSpendCents={fixedSpendCents} forecastDifference={forecastDifference} goal={goalSummary} profile={profile} transactions={transactions} weekSeries={weekSeries} coachPlan={coachPlan} coachProvenance={coachProvenance} coachState={coachState} coachError={coachError} isDemo={mode === "demo"} hasCategorization={Boolean(latestCategorization)} onAddExpense={() => openExpense()} onRefreshCoach={refreshCoach} onOpenTransactions={() => mode === "demo" ? activateDemoView("transactions") : window.location.assign(routeHref(mode, "transactions", month))} onDrilldown={drillIntoCategory} /></>}
+        {activeView === "transactions" && <TransactionsView transactions={filteredTransactions} filter={categoryFilter} onFilter={setCategoryFilter} profile={profile} onAdd={() => openExpense()} onImport={() => setShowImport(true)} onEdit={openExpense} onDelete={deleteExpense} />}
         {activeView === "budgets" && <BudgetsView budgetDraft={budgetDraft} summary={summary} profile={profile} onChange={(category, amountCents) => setBudgetDraft((items) => items.map((item) => item.category === category ? { ...item, limitCents: amountCents } : item))} onSubmit={saveBudgets} />}
         {activeView === "goals" && <GoalsView goal={goalDraft} goalSummary={goalSummary} profile={profile} onChange={setGoalDraft} onSubmit={saveGoal} />}
-        {activeView === "insights" && <InsightsView summary={summary} forecast={forecast} profile={profile} coachPlan={coachPlan} coachState={coachState} coachError={coachError} onRefreshCoach={refreshCoach} />}
+        {activeView === "insights" && <InsightsView summary={summary} forecast={forecast} profile={profile} coachPlan={coachPlan} coachProvenance={coachProvenance} coachState={coachState} coachError={coachError} onRefreshCoach={refreshCoach} />}
         {activeView === "settings" && <SettingsView profile={profile} mode={mode} onSubmit={saveProfile} onDelete={deleteData} />}
       </main>
 
@@ -406,8 +468,8 @@ export function BudgetWorkspace({
   );
 }
 
-function DashboardView({ summary, forecast, forecastDifference, goal, profile, transactions, weekSeries, coachPlan, coachState, coachError, onRefreshCoach, onOpenTransactions, onDrilldown }: {
-  summary: ReturnType<typeof getBudgetSummary>; forecast: ReturnType<typeof getForecast>; forecastDifference: number; goal: ReturnType<typeof goalProgress>; profile: StudentProfile; transactions: BudgetTransaction[]; weekSeries: ReturnType<typeof makeWeekSeries>; coachPlan: CoachPlan | null; coachState: "idle" | "loading"; coachError: string; onRefreshCoach: () => void; onOpenTransactions: () => void; onDrilldown: (category: Category) => void;
+function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference, goal, profile, transactions, weekSeries, coachPlan, coachProvenance, coachState, coachError, isDemo, hasCategorization, onAddExpense, onRefreshCoach, onOpenTransactions, onDrilldown }: {
+  summary: ReturnType<typeof getBudgetSummary>; forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; forecastDifference: number; goal: ReturnType<typeof goalProgress>; profile: StudentProfile; transactions: BudgetTransaction[]; weekSeries: ReturnType<typeof makeWeekSeries>; coachPlan: CoachPlan | null; coachProvenance: CoachProvenance | null; coachState: "idle" | "loading"; coachError: string; isDemo: boolean; hasCategorization: boolean; onAddExpense: () => void; onRefreshCoach: () => void; onOpenTransactions: () => void; onDrilldown: (category: Category) => void;
 }) {
   return <>
     <section className="metrics" aria-label="Budget summary">
@@ -415,15 +477,33 @@ function DashboardView({ summary, forecast, forecastDifference, goal, profile, t
       <article className="metric"><div className="metric-heading"><span>End-of-month forecast</span><CurrencyDollar /></div><strong>{formatMoney(forecast.forecastCents, profile.currency)}</strong><p className={forecastDifference >= 0 ? "positive" : "negative"}>{forecastDifference >= 0 ? <ArrowDownRight weight="bold" /> : <ArrowUpRight weight="bold" />}{forecastDifference >= 0 ? `${formatMoney(forecastDifference, profile.currency)} below your plan` : `${formatMoney(Math.abs(forecastDifference), profile.currency)} above your plan`}</p></article>
       <article className="metric"><div className="metric-heading"><span>{goal?.name ?? "Savings goal"}</span><Target /></div><strong>{goal ? formatMoney(goal.currentCents, profile.currency) : "Set a goal"}{goal && <small> of {formatMoney(goal.targetCents, profile.currency)}</small>}</strong><p>{goal ? `${goal.percent}% funded with ${formatMoney(goal.remainingCents, profile.currency)} left to save` : "Add a goal to keep your cushion visible."}</p></article>
     </section>
+    {isDemo && <DemoChecklist hasCategorization={hasCategorization} hasRefreshedPlan={coachProvenance?.source !== "example"} onAddExpense={onAddExpense} onRefreshPlan={onRefreshCoach} />}
+    <ForecastExplainer forecast={forecast} fixedSpendCents={fixedSpendCents} currency={profile.currency} />
     <section className="main-grid">
       <article className="panel spending-panel"><div className="panel-heading"><div><h2>Weekly spending</h2><p>Daily expenses in the selected month.</p></div><span className="trend-tag"><CalendarBlank weight="bold" /> {forecast.daysRemaining} days left</span></div><div className="chart-wrap" aria-label="Weekly spending area chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={weekSeries} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}><defs><linearGradient id="spendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity={0.32} /><stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 5" /><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "var(--muted)", fontSize: 12 }} /><Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12 }} formatter={(value) => [`$${value}`, "Spent"]} /><Area type="monotone" dataKey="amount" stroke="var(--accent)" strokeWidth={2.5} fill="url(#spendFill)" /></AreaChart></ResponsiveContainer></div></article>
-      <CoachCard coachPlan={coachPlan} state={coachState} error={coachError} currency={profile.currency} onRefresh={onRefreshCoach} compact />
+      <CoachCard coachPlan={coachPlan} provenance={coachProvenance} state={coachState} error={coachError} currency={profile.currency} onRefresh={onRefreshCoach} compact />
     </section>
     <section className="lower-grid">
       <article className="panel transactions-panel"><div className="panel-heading compact"><div><h2>Recent transactions</h2><p>Correct a category anytime to personalize future entries.</p></div><button className="text-button" onClick={onOpenTransactions}>View all <CaretRight /></button></div><div className="transaction-list">{transactions.slice(0, 5).map((transaction) => <TransactionRow transaction={transaction} currency={profile.currency} key={transaction.id} />)}</div></article>
       <article className="panel budgets-panel"><div className="panel-heading compact"><div><h2>Budget health</h2><p>Tap a category to see every related expense.</p></div><ChartDonut /></div><div className="budget-list">{summary.categoryHealth.filter((item) => item.limitCents > 0).slice(0, 5).map((item) => <button className="budget-row budget-row-button" key={item.category} onClick={() => onDrilldown(item.category)}><div><strong>{item.category}</strong><span>{formatMoney(item.spentCents, profile.currency)} of {formatMoney(item.limitCents, profile.currency)}</span></div><div className="category-track"><span style={{ width: `${Math.min(item.percentUsed, 100)}%`, background: categoryColors[item.category] }} /></div></button>)}</div></article>
     </section>
   </>;
+}
+
+function DemoChecklist({ hasCategorization, hasRefreshedPlan, onAddExpense, onRefreshPlan }: { hasCategorization: boolean; hasRefreshedPlan: boolean; onAddExpense: () => void; onRefreshPlan: () => void }) {
+  return <section className="demo-checklist" aria-label="60-second demo path"><div><p className="eyebrow">60-second demo</p><h2>See the whole student budget loop.</h2><p>Everything here is fictional and resets when you reload.</p></div><ol><li className="demo-step"><span>{hasCategorization ? <CheckCircle weight="fill" /> : "01"}</span><div><strong>Add a fictional expense</strong><p>Start with one purchase to make the numbers move.</p></div><button className="text-button" onClick={onAddExpense}>Add expense <ArrowRight /></button></li><li className="demo-step"><span>{hasCategorization ? <CheckCircle weight="fill" /> : "02"}</span><div><strong>See the category and forecast</strong><p>Review the confidence, rationale, and budget effect.</p></div></li><li className="demo-step"><span>{hasRefreshedPlan ? <CheckCircle weight="fill" /> : "03"}</span><div><strong>Refresh your plan</strong><p>Get the updated coach response for this fictional month.</p></div><button className="text-button" onClick={onRefreshPlan}>Refresh plan <ArrowRight /></button></li></ol></section>;
+}
+
+function ForecastExplainer({ forecast, fixedSpendCents, currency }: { forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; currency: string }) {
+  return <section className="forecast-explainer" aria-label="How the month-end forecast works"><div><p className="eyebrow">Why this forecast</p><h2>A fixed foundation plus your flexible pace.</h2><p>Already-paid rent and subscriptions stay fixed. Only the rest of your spending is paced through the remaining days.</p></div><dl><div><dt>Fixed spending</dt><dd>{formatMoney(fixedSpendCents, currency)}</dd></div><div><dt>Flexible daily pace</dt><dd>{formatMoney(forecast.flexibleDailyPaceCents, currency)}</dd></div><div><dt>Projected month end</dt><dd>{formatMoney(forecast.forecastCents, currency)}</dd></div><div><dt>Days left</dt><dd>{forecast.daysRemaining}</dd></div></dl></section>;
+}
+
+function LatestCategorizationCard({ value, currency, onDismiss, onChangeCategory }: { value: LatestCategorization; currency: string; onDismiss: () => void; onChangeCategory: () => void }) {
+  const { analysis, transaction, projectedCategorySpentCents, categoryLimitCents } = value;
+  const localResult = analysis.source === "local";
+  const provenance = analysis.source === "openai" ? `Categorized by ${analysis.model}` : analysis.source === "gemini" ? `Development AI · ${analysis.model}` : "Quick local category";
+  const budgetEffect = categoryLimitCents > 0 ? `${formatMoney(projectedCategorySpentCents, currency)} of ${formatMoney(categoryLimitCents, currency)}` : "No category limit set";
+  return <section className="categorization-card" aria-label="Latest expense categorization"><div className="categorization-card-heading"><div><span className="ai-label">{provenance}</span><h2>{transaction.merchant} is in {analysis.category}</h2><p>{localResult ? "This is a local rule-based suggestion, not a live AI response." : `${Math.round(analysis.confidence * 100)}% confidence · ${analysis.insight}`}</p></div><button className="icon-button quiet" onClick={onDismiss} aria-label="Dismiss latest categorization"><X /></button></div><div className="categorization-details"><div><small>Why</small><strong>{analysis.action}</strong></div><div><small>Category total after this expense</small><strong>{budgetEffect}</strong></div></div><div className="categorization-actions"><button className="secondary-button" onClick={onChangeCategory}><PencilSimple /> Change category</button><button className="text-button" onClick={onDismiss}>Keep it <CheckCircle weight="bold" /></button></div></section>;
 }
 
 function TransactionRow({ transaction, currency, actions }: { transaction: BudgetTransaction; currency: string; actions?: ReactNode }) {
@@ -442,17 +522,19 @@ function GoalsView({ goal, goalSummary, profile, onChange, onSubmit }: { goal: S
   return <section className="goals-layout"><article className="goal-hero"><div><p className="eyebrow">Savings kept in view</p><h2>{goal.name}</h2><strong>{formatMoney(goal.currentCents, profile.currency)} <small>of {formatMoney(goal.targetCents, profile.currency)}</small></strong><p>{goalSummary ? `${goalSummary.percent}% funded. ${formatMoney(goalSummary.remainingCents, profile.currency)} remains.` : "Set a goal to start tracking progress."}</p></div><div className="goal-ring" style={{ "--progress": `${goalSummary?.percent ?? 0}%` } as React.CSSProperties}><span>{goalSummary?.percent ?? 0}%</span></div></article><section className="page-panel"><div className="page-panel-heading"><div><h2>Update your goal</h2><p>Progress reflects the amount you say is saved. It never relies on bank credentials.</p></div></div><form onSubmit={(event) => void onSubmit(event)} className="settings-form"><div className="form-grid two"><label>Goal name<input value={goal.name} maxLength={80} onChange={(event) => onChange({ ...goal, name: event.target.value })} required /></label><label>Goal type<select value={goal.kind} onChange={(event) => onChange({ ...goal, kind: event.target.value as StudentGoal["kind"] })}><option value="emergency">Emergency fund</option><option value="semester">Semester savings</option></select></label><label>Target amount<input type="number" min="1" step="1" value={Math.round(goal.targetCents / 100)} onChange={(event) => onChange({ ...goal, targetCents: toCents(Number(event.target.value) || 0) })} required /></label><label>Already saved<input type="number" min="0" step="1" value={Math.round(goal.currentCents / 100)} onChange={(event) => onChange({ ...goal, currentCents: toCents(Number(event.target.value) || 0) })} required /></label><label>Target date<input type="date" value={goal.targetDate ?? ""} onChange={(event) => onChange({ ...goal, targetDate: event.target.value || null })} /></label></div><button className="primary-button" type="submit"><FloppyDisk weight="bold" /> Save goal</button></form></section></section>;
 }
 
-function InsightsView({ summary, forecast, profile, coachPlan, coachState, coachError, onRefreshCoach }: { summary: ReturnType<typeof getBudgetSummary>; forecast: ReturnType<typeof getForecast>; profile: StudentProfile; coachPlan: CoachPlan | null; coachState: "idle" | "loading"; coachError: string; onRefreshCoach: () => void }) {
+function InsightsView({ summary, forecast, profile, coachPlan, coachProvenance, coachState, coachError, onRefreshCoach }: { summary: ReturnType<typeof getBudgetSummary>; forecast: ReturnType<typeof getForecast>; profile: StudentProfile; coachPlan: CoachPlan | null; coachProvenance: CoachProvenance | null; coachState: "idle" | "loading"; coachError: string; onRefreshCoach: () => void }) {
   const watchouts = summary.categoryHealth.filter((item) => item.status !== "healthy");
-  return <section className="insights-layout"><CoachCard coachPlan={coachPlan} state={coachState} error={coachError} currency={profile.currency} onRefresh={onRefreshCoach} /><div className="insight-grid"><article className="panel"><div className="panel-heading"><div><h2>Forecast math</h2><p>Already-paid rent and subscriptions stay fixed. Flexible spending sets the pace.</p></div><ChartDonut /></div><div className="forecast-lines"><span><small>Spent so far</small><strong>{formatMoney(summary.totalSpentCents, profile.currency)}</strong></span><span><small>Flexible daily pace</small><strong>{formatMoney(forecast.flexibleDailyPaceCents, profile.currency)}</strong></span><span><small>Projected month end</small><strong>{formatMoney(forecast.forecastCents, profile.currency)}</strong></span></div></article><article className="panel"><div className="panel-heading"><div><h2>Category watchouts</h2><p>These limits need attention before your next flexible purchase.</p></div><Warning weight="fill" /></div>{watchouts.length ? <div className="watchout-list">{watchouts.map((item) => <div key={item.category}><span style={{ background: categoryColors[item.category] }} /><p><strong>{item.category}</strong><small>{item.status === "over" ? `${formatMoney(Math.abs(item.remainingCents), profile.currency)} over limit` : `${formatMoney(item.remainingCents, profile.currency)} left`}</small></p></div>)}</div> : <EmptyState icon={<CheckCircle weight="fill" />} title="Every category is on track." copy="Keep checking your daily pace as new expenses arrive." compact />}</article></div></section>;
+  return <section className="insights-layout"><CoachCard coachPlan={coachPlan} provenance={coachProvenance} state={coachState} error={coachError} currency={profile.currency} onRefresh={onRefreshCoach} /><div className="insight-grid"><article className="panel"><div className="panel-heading"><div><h2>Forecast math</h2><p>Already-paid rent and subscriptions stay fixed. Flexible spending sets the pace.</p></div><ChartDonut /></div><div className="forecast-lines"><span><small>Spent so far</small><strong>{formatMoney(summary.totalSpentCents, profile.currency)}</strong></span><span><small>Flexible daily pace</small><strong>{formatMoney(forecast.flexibleDailyPaceCents, profile.currency)}</strong></span><span><small>Projected month end</small><strong>{formatMoney(forecast.forecastCents, profile.currency)}</strong></span></div></article><article className="panel"><div className="panel-heading"><div><h2>Category watchouts</h2><p>These limits need attention before your next flexible purchase.</p></div><Warning weight="fill" /></div>{watchouts.length ? <div className="watchout-list">{watchouts.map((item) => <div key={item.category}><span style={{ background: categoryColors[item.category] }} /><p><strong>{item.category}</strong><small>{item.status === "over" ? `${formatMoney(Math.abs(item.remainingCents), profile.currency)} over limit` : `${formatMoney(item.remainingCents, profile.currency)} left`}</small></p></div>)}</div> : <EmptyState icon={<CheckCircle weight="fill" />} title="Every category is on track." copy="Keep checking your daily pace as new expenses arrive." compact />}</article></div></section>;
 }
 
 function SettingsView({ profile, mode, onSubmit, onDelete }: { profile: StudentProfile; mode: WorkspaceMode; onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>; onDelete: () => Promise<void> }) {
   return <section className="settings-layout"><section className="page-panel"><div className="page-panel-heading"><div><h2>Preferences</h2><p>Update the name, currency, and allowance behind your spending plan.</p></div></div><form onSubmit={(event) => void onSubmit(event)} className="settings-form"><div className="form-grid two"><label>Name<input name="displayName" defaultValue={profile.displayName} maxLength={80} required /></label><label>Currency<select name="currency" defaultValue={profile.currency}><option value="USD">USD</option><option value="CAD">CAD</option><option value="GBP">GBP</option><option value="EUR">EUR</option></select></label><label>Monthly income or allowance<input name="monthlyAllowance" type="number" min="0" step="1" defaultValue={Math.round(profile.monthlyAllowanceCents / 100)} required /></label></div><button className="primary-button" type="submit"><FloppyDisk weight="bold" /> Save preferences</button></form></section><section className="privacy-panel"><span><ShieldCheck weight="fill" /></span><div><h2>Private by design</h2><p>{mode === "demo" ? "This browser-only demo uses fictional data and resets on reload." : "Your workspace is scoped to your signed-in account. Pocket Semester does not use bank credentials."}</p><p>Recommendations are educational budgeting guidance, not financial, tax, credit, or investment advice.</p></div></section><section className="danger-panel"><div><h2>Delete my Pocket Semester data</h2><p>{mode === "demo" ? "Reset the sample workspace to its original fictional data." : "This removes your transactions, budgets, goals, merchant rules, and saved coach plans. Your sign-in account stays active."}</p></div><button className="danger-outline-button" onClick={() => void onDelete()}>{mode === "demo" ? "Reset demo" : "Delete my data"}</button></section></section>;
 }
 
-function CoachCard({ coachPlan, state, error, currency, onRefresh, compact = false }: { coachPlan: CoachPlan | null; state: "idle" | "loading"; error: string; currency: string; onRefresh: () => void; compact?: boolean }) {
-  return <article className={`coach-card ${compact ? "coach-card-compact" : ""}`}><div className="coach-card-top"><span className="insight-icon"><Brain weight="fill" /></span><div><span className="ai-label">Guided coach</span><h2>{coachPlan ? coachPlan.summary : "Ready when you want a focused plan."}</h2></div></div>{coachPlan ? <><div className="coach-actions">{coachPlan.actions.map((action) => <div key={action.title}><strong>{action.title}</strong><p>{action.detail}</p><small>Estimated room: {formatMoney(action.estimatedImpactCents, currency)}</small></div>)}</div><div className="coach-total"><Sparkle weight="fill" /> Estimated impact: {formatMoney(coachPlan.estimatedImpactCents, currency)}</div></> : <p className="coach-empty">Refresh your plan to get two or three practical actions based on this month’s spending, category limits, and goal.</p>} {error && <p className="form-error" role="alert">{error}</p>}<button className="coach-refresh" onClick={onRefresh} disabled={state === "loading"}>{state === "loading" ? "Building your plan" : coachPlan ? "Refresh plan" : "Build my spending plan"}<ArrowRight weight="bold" /></button></article>;
+function CoachCard({ coachPlan, provenance, state, error, currency, onRefresh, compact = false }: { coachPlan: CoachPlan | null; provenance: CoachProvenance | null; state: "idle" | "loading"; error: string; currency: string; onRefresh: () => void; compact?: boolean }) {
+  const isExample = provenance?.source === "example";
+  const label = provenance?.source === "openai" ? `Powered by ${provenance.model}` : provenance?.source === "gemini" ? `Development AI · ${provenance.model}` : isExample ? "Example plan · fictional data" : "Guided coach";
+  return <article className={`coach-card ${compact ? "coach-card-compact" : ""}`}><div className="coach-card-top"><span className="insight-icon"><Brain weight="fill" /></span><div><span className="ai-label">{label}</span><h2>{coachPlan ? coachPlan.summary : "Ready when you want a focused plan."}</h2></div></div>{isExample && <p className="coach-example-note">This sample plan is preloaded for the fictional demo. Refresh after a change to request a fresh provider result.</p>}{coachPlan ? <><div className="coach-actions">{coachPlan.actions.map((action) => <div key={action.title}><strong>{action.title}</strong><p>{action.detail}</p><small>Estimated room: {formatMoney(action.estimatedImpactCents, currency)}</small></div>)}</div><div className="coach-total"><Sparkle weight="fill" /> Estimated impact: {formatMoney(coachPlan.estimatedImpactCents, currency)}</div></> : <p className="coach-empty">Refresh your plan to get two or three practical actions based on this month’s spending, category limits, and goal.</p>} {error && <p className="form-error" role="alert">{error}</p>}<button className="coach-refresh" onClick={onRefresh} disabled={state === "loading"}>{state === "loading" ? "Building your plan" : isExample ? "Refresh after your change" : coachPlan ? "Refresh plan" : "Build my spending plan"}<ArrowRight weight="bold" /></button></article>;
 }
 
 function EmptyState({ icon, title, copy, compact = false }: { icon: ReactNode; title: string; copy: string; compact?: boolean }) {
@@ -461,11 +543,17 @@ function EmptyState({ icon, title, copy, compact = false }: { icon: ReactNode; t
 
 function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   const dialogRef = useRef<HTMLElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const timer = window.setTimeout(() => dialogRef.current?.focus(), 0);
-    return () => { document.body.style.overflow = previousOverflow; window.clearTimeout(timer); };
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.clearTimeout(timer);
+      if (previousFocusRef.current?.isConnected) previousFocusRef.current.focus();
+    };
   }, []);
   function trapFocus(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
