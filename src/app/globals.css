@@ -80,14 +80,13 @@ svg { flex: 0 0 auto; }
 .auth-copy > p:last-child { margin: 13px 0 25px; color: var(--muted); font-size: 14px; line-height: 1.55; }
 .auth-card { width: 100%; min-width: 0; padding: clamp(20px, 5vw, 28px); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .auth-card > * { width: 100%; max-width: 100%; min-width: 0; }
-.auth-clerk-card { width: 100% !important; max-width: 100% !important; min-width: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
-.auth-clerk-title { color: var(--foreground) !important; font-size: 22px !important; letter-spacing: -0.045em !important; }
-.auth-clerk-subtitle { color: var(--muted) !important; }
-.auth-clerk-social, .auth-clerk-input { border-color: var(--line) !important; border-radius: 9px !important; box-shadow: none !important; }
-.auth-clerk-primary { border-radius: 9px !important; background: var(--accent-strong) !important; box-shadow: none !important; }
-.auth-clerk-divider { background: var(--line) !important; }
-.auth-clerk-divider-text, .auth-clerk-label { color: var(--muted) !important; }
-.auth-clerk-link { color: var(--accent-strong) !important; }
+.local-auth-form { display: grid; gap: 15px; text-align: left; }
+.local-auth-form label { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 650; }
+.local-auth-form input { width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-strong); color: var(--foreground); font-size: 13px; }
+.local-auth-form input::placeholder { color: color-mix(in srgb, var(--muted) 70%, transparent); }
+.auth-submit { width: 100%; margin-top: 4px; }
+.local-auth-switch { margin: 1px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
+.local-auth-switch a { color: var(--accent-strong); font-weight: 700; text-decoration: none; }
 .auth-note { margin: 19px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .auth-demo-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; color: var(--accent-strong); font-size: 12px; font-weight: 660; text-decoration: none; }
 .auth-demo-link svg { width: 14px; height: 14px; }

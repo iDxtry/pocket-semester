@@ -2,7 +2,6 @@
 
 import { FormEvent, KeyboardEvent, ReactNode, useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import { SignOutButton } from "@clerk/nextjs";
 import Papa from "papaparse";
 import {
   ArrowDownRight,
@@ -39,6 +38,7 @@ import { formatMoney, getBudgetSummary, getForecast, goalProgress, isoDateForMon
 import { parseMappedCsvRows, type ParsedCsvExpense } from "@/lib/csv";
 import type { AiSource, CoachPlan } from "@/lib/ai/types";
 import { routeForView, type WorkspaceView } from "@/lib/routes";
+import { SignOutButton } from "@/components/sign-out-button";
 
 type WorkspaceMode = "demo" | "account";
 type CategoryFilter = Category | "all";
@@ -469,7 +469,7 @@ export function BudgetWorkspace({
       window.location.assign("/demo");
       return;
     }
-    if (!window.confirm("Delete all Pocket Semester transactions, budgets, goals, rules, and coach plans? Your Clerk account will remain.")) return;
+    if (!window.confirm("Delete all Pocket Semester transactions, budgets, goals, rules, and coach plans? Your sign-in account will remain.")) return;
     const response = await fetch("/api/profile", { method: "DELETE" });
     await responseJson(response);
     window.location.assign("/");
@@ -497,7 +497,7 @@ export function BudgetWorkspace({
         ) : (
           <div className="account-footer">
             <Link className="student-profile" href={routeHref(mode, "settings", month)}><span className="avatar">{profile.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{profile.displayName}</strong><small>Student plan</small></span></Link>
-            <SignOutButton redirectUrl="/"><button className="sidebar-signout" type="button"><SignOut /> Sign out</button></SignOutButton>
+            <SignOutButton><><SignOut /> Sign out</></SignOutButton>
           </div>
         )}
       </aside>

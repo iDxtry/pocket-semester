@@ -1,6 +1,6 @@
-import { isClerkConfigured } from "@/lib/auth";
+import { isAuthConfigured } from "@/lib/auth";
 import { isDatabaseConfigured } from "@/db";
 
 export function isAccountPlatformConfigured() {
-  return isClerkConfigured() && isDatabaseConfigured();
+  return isAuthConfigured() && isDatabaseConfigured();
 }

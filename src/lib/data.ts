@@ -53,7 +53,7 @@ export function toClientProfile(row: typeof profiles.$inferSelect): StudentProfi
 
 export async function getProfile(userId: string) {
   const db = getDb();
-  const rows = await db.select().from(profiles).where(eq(profiles.clerkUserId, userId)).limit(1);
+  const rows = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
   return rows[0] ?? null;
 }
 
@@ -62,7 +62,7 @@ export async function getMonthlyWorkspace(userId: string, month = currentMonth()
   const rangeStart = monthStart(month);
   const rangeEnd = monthEnd(month);
   const [profileRows, transactionRows, budgetRows, goalRows] = await Promise.all([
-    db.select().from(profiles).where(eq(profiles.clerkUserId, userId)).limit(1),
+    db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1),
     db
       .select()
       .from(transactions)

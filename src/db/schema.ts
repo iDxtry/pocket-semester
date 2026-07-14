@@ -6,7 +6,7 @@ export const profiles = pgTable(
   "profiles",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    clerkUserId: text("clerk_user_id").notNull(),
+    userId: text("user_id").notNull(),
     displayName: text("display_name").notNull(),
     currency: text("currency").notNull().default("USD"),
     semesterStart: date("semester_start", { mode: "string" }),
@@ -16,7 +16,31 @@ export const profiles = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex("profiles_clerk_user_id_idx").on(table.clerkUserId)],
+  (table) => [uniqueIndex("profiles_user_id_idx").on(table.userId)],
+);
+
+export const authUsers = pgTable(
+  "auth_users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: text("email").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    displayName: text("display_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("auth_users_email_idx").on(table.email)],
+);
+
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: text("user_id").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("auth_sessions_user_idx").on(table.userId)],
 );
 
 export const transactions = pgTable(

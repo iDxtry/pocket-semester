@@ -23,7 +23,7 @@ The public, resettable demo is ready at `/demo`. It has fictional data, does not
 
 The sample import file is available at [`public/samples/pocket-semester-demo.csv`](public/samples/pocket-semester-demo.csv).
 
-The account layer, Clerk guards, Drizzle schema, Neon-compatible database access, migrations, and authenticated APIs are included in this repository. It becomes live once Clerk and Neon have been provisioned in the Vercel project and their environment variables are set.
+The account layer, database-backed sessions, Drizzle schema, Neon-compatible database access, migrations, and authenticated APIs are included in this repository. It becomes live once a Neon database URL is set; no auth vendor or custom domain is required.
 
 ## Why this project
 
@@ -49,25 +49,27 @@ The interface includes a mobile navigation drawer, keyboard-safe dialogs, loadin
 ## Tech stack
 
 - Next.js 16 App Router, React 19, TypeScript, and CSS.
-- Clerk for email/social sign-in and server-derived user identity.
+- App-owned email/password accounts with scrypt password hashes and signed, httpOnly database sessions.
 - Neon Postgres with Drizzle ORM for private, persistent data.
 - Zod for API input and AI structured-output validation.
 - OpenAI Responses API structured-output adapter for final GPT-5.6 production use; Gemini remains development-only until OpenAI credits are available.
 - Papa Parse for CSV import preview and mapping.
 - Recharts for spending visualization.
 
-Money is stored as integer cents. Every authenticated API derives ownership from the Clerk session rather than accepting a client-supplied user ID.
+Money is stored as integer cents. Every authenticated API derives ownership from the server session rather than accepting a client-supplied user ID.
 
 ## Data model
 
-- `profiles`: Clerk user ID, display name, currency, semester dates, allowance, onboarding state.
+- `auth_users`: normalized email, scrypt password hash, and display name.
+- `auth_sessions`: hashed session tokens with expiry timestamps.
+- `profiles`: local user ID, display name, currency, semester dates, allowance, onboarding state.
 - `transactions`: merchant, description, amount cents, date, category, confidence, and source.
 - `budgets`: one category limit per user and month.
 - `goals`: emergency or semester target, current amount, and target date.
 - `merchant_rules`: a user's corrected merchant-to-category preferences.
 - `coach_runs`: generated structured plans, model metadata, and month.
 
-The initial migration is tracked in [`drizzle/0000_uneven_maggott.sql`](drizzle/0000_uneven_maggott.sql).
+The initial migration is tracked in [`drizzle/0000_uneven_maggott.sql`](drizzle/0000_uneven_maggott.sql), with the local-auth additions in [`drizzle/0001_local_auth.sql`](drizzle/0001_local_auth.sql).
 
 ## Local development
 
@@ -107,24 +109,21 @@ OPENAI_MODEL=gpt-5.6
 
 The adapter calls the OpenAI Responses API with strict JSON Schema output, then Zod-validates every expense analysis and coach plan. API responses include truthful `source` and `model` metadata. The UI displays a GPT-5.6 provenance label only after a real OpenAI response; local categorization is explicitly identified as a rule-based fallback.
 
-### Clerk and Neon setup
+### Neon and local auth setup
 
-1. Add Clerk and Neon to the Vercel project through Vercel Marketplace, accepting each provider's terms in your own account.
-2. Pull or add the provisioned values to your local and Vercel environments:
+1. Create a free Neon Postgres database and add its connection string to local and Vercel environments:
 
    ```bash
-   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
-   CLERK_SECRET_KEY=...
    DATABASE_URL=...
    ```
 
-3. Apply the tracked schema:
+2. Apply the tracked schema:
 
    ```bash
    npm run db:push
    ```
 
-4. Configure Clerk's sign-in/sign-up paths to `/sign-in` and `/sign-up`, then create an account and finish onboarding.
+3. Open `/sign-up`, create an account, and finish onboarding. Passwords are hashed with Node's built-in scrypt implementation; raw passwords are never stored.
 
 Until these variables exist, account pages intentionally show a setup notice instead of simulating private cloud storage.
 
@@ -133,6 +132,9 @@ Until these variables exist, account pages intentionally show a setup notice ins
 | Endpoint | Capability |
 | --- | --- |
 | `POST /api/analyze` | Categorize one expense with a validated result. Public demo calls are rate-limited. |
+| `POST /api/auth/sign-up` | Create a local account and start an httpOnly session. |
+| `POST /api/auth/sign-in` | Verify credentials and start an httpOnly session. |
+| `POST /api/auth/sign-out` | Revoke the current session and clear the cookie. |
 | `GET, POST /api/transactions` | List and create owned transactions. |
 | `PATCH, DELETE /api/transactions/:id` | Edit or delete an owned transaction. |
 | `POST /api/imports/transactions` | Validate and create mapped CSV rows. |
@@ -156,7 +158,7 @@ The test suite covers cents math, budget aggregation, fixed-cost forecasting, CS
 
 Gemini is development-only. Before submitting to OpenAI Build Week:
 
-1. Add production Clerk keys and the private Neon database in Vercel.
+1. Keep the free Vercel domain and configure only the private Neon database in Vercel.
 2. Set `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and `OPENAI_MODEL=gpt-5.6`.
 3. Verify one live expense categorization and one coach plan on Vercel. Both must report `source: "openai"` and the GPT-5.6 model.
 4. Confirm the deployed UI contains no Gemini claims, record the live result in the demo video, and only then describe GPT-5.6 as active on Devpost.
@@ -169,7 +171,7 @@ Codex accelerated the product scoping, app architecture, data model, responsive 
 
 ## Submission checklist
 
-- [ ] Deploy the production app to Vercel with production Clerk, Neon, and final GPT-5.6 configuration.
+- [ ] Deploy the production app to Vercel with Neon, local auth, and final GPT-5.6 configuration.
 - [ ] Keep this GitHub repository public, or grant access to the required Build Week reviewer addresses if private.
 - [ ] Update the existing Devpost draft as **Pocket Semester**, including the live URL, public repository, country, submitter type, category, and required `/feedback` session ID.
 - [ ] Upload a public YouTube video under three minutes with voiceover: student problem, onboarding, manual or CSV expense, live category update, coach action, budget outcome, Codex, and GPT-5.6.
