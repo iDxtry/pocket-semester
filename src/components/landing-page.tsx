@@ -25,10 +25,10 @@ export function LandingPage() {
           <h1>Know what today costs your future self.</h1>
           <p className="hero-lede">Pocket Semester turns everyday student spending into clear budget health, a realistic month-end forecast, and one practical next step.</p>
           <div className="hero-actions">
-            <Link href="/demo" className="primary-button"><Sparkle weight="fill" /> Explore the demo <ArrowRight weight="bold" /></Link>
+            <Link href="/demo" className="primary-button"><Sparkle weight="fill" /> Try the 60-second demo <ArrowRight weight="bold" /></Link>
             <Link href="/sign-up" className="secondary-button">Start a private budget</Link>
           </div>
-          <div className="hero-trust"><LockKey weight="fill" /> No bank credentials. Fictional demo data. Educational guidance only.</div>
+          <div className="hero-trust"><LockKey weight="fill" /> No sign-up · fictional data · no bank credentials · educational guidance only.</div>
         </div>
         <div className="hero-workspace">
           <div className="preview-caption"><span>Interactive sample workspace</span><Link href="/demo">Open it <ArrowRight weight="bold" /></Link></div>
