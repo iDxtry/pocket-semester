@@ -31,6 +31,17 @@ test("demo data keeps its plan inside the allowance and its activity inside the 
   }
 });
 
+test("demo months have distinct budgets, spending, and term-safe dates", () => {
+  const june = createDemoWorkspace("2026-06");
+  const july = createDemoWorkspace("2026-07");
+  const august = createDemoWorkspace("2026-08");
+
+  assert.notEqual(getBudgetSummary(june.transactions, june.budgets).totalSpentCents, getBudgetSummary(july.transactions, july.budgets).totalSpentCents);
+  assert.notEqual(getBudgetSummary(july.transactions, july.budgets).totalSpentCents, getBudgetSummary(august.transactions, august.budgets).totalSpentCents);
+  assert.notDeepEqual(june.budgets, july.budgets);
+  assert.ok(august.transactions.every((transaction) => transaction.occurredOn >= august.profile.semesterStart! && transaction.occurredOn <= august.profile.semesterEnd!));
+});
+
 test("forecast scales spending pace through the selected month", () => {
   const forecast = getForecast(15000, "2026-02", new Date("2026-02-10T12:00:00Z"));
   assert.equal(forecast.daysInMonth, 28);
