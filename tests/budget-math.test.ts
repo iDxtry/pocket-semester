@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoWorkspace } from "../src/lib/budget";
-import { getBudgetSummary, getForecast, getMonthState, toCents, transactionsForMonth } from "../src/lib/budget-math";
+import { getBudgetSummary, getForecast, getMonthState, makeMonthSeries, toCents, transactionsForMonth } from "../src/lib/budget-math";
 
 test("money amounts are converted to integer cents", () => {
   assert.equal(toCents(12.345), 1235);
@@ -69,4 +69,23 @@ test("month state separates closed, active, and not-started months", () => {
   assert.equal(getMonthState("2026-07", asOf), "current");
   assert.equal(getMonthState("2026-08", asOf), "future");
   assert.equal(createDemoWorkspace("2026-08", asOf).transactions.length, 0);
+});
+
+test("daily month series covers each calendar date without leaking another month", () => {
+  const julyExpense = { id: "july", merchant: "Residence", description: "Residence payment", amountCents: 89500, category: "Housing" as const, occurredOn: "2026-07-01", confidence: 1, source: "demo" as const };
+  const juneExpense = { ...julyExpense, id: "june", occurredOn: "2026-06-30", amountCents: 5400 };
+  const asOf = new Date("2026-07-15T12:00:00Z");
+  const july = makeMonthSeries([juneExpense, julyExpense], "2026-07", asOf);
+
+  assert.equal(july.length, 31);
+  assert.equal(july[0].amountCents, 89500);
+  assert.equal(july[0].fixedCostLabel, "Residence payment");
+  assert.equal(july[15].isUpcoming, true);
+  assert.equal(july.reduce((total, day) => total + day.amountCents, 0), 89500);
+});
+
+test("daily month series handles 28- and 30-day months", () => {
+  const asOf = new Date("2026-01-15T12:00:00Z");
+  assert.equal(makeMonthSeries([], "2026-02", asOf).length, 28);
+  assert.equal(makeMonthSeries([], "2026-04", asOf).length, 30);
 });

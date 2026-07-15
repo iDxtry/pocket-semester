@@ -144,10 +144,13 @@ export function createDemoWorkspace(month = "2026-07", asOf = new Date()): Works
       id: "demo-tx-1", merchant: "Campus Apartments", description: "Residence payment", amountCents: demoExpenseAmount(89500, "Housing", month), category: "Housing", occurredOn: date(1), confidence: 0.99, source: "demo",
     },
     {
-      id: "demo-tx-2", merchant: "Neighborhood Market", description: "Groceries for the week", amountCents: demoExpenseAmount(5874, "Food & dining", month), category: "Food & dining", occurredOn: date(2), confidence: 0.97, source: "demo",
+      id: "demo-tx-2", merchant: "Neighborhood Market", description: "Groceries for the week", amountCents: demoExpenseAmount(4500, "Food & dining", month), category: "Food & dining", occurredOn: date(2), confidence: 0.97, source: "demo",
     },
     {
       id: "demo-tx-3", merchant: "City Bus", description: "Monthly student transit pass", amountCents: demoExpenseAmount(3125, "Transport", month), category: "Transport", occurredOn: date(3), confidence: 0.99, source: "demo",
+    },
+    {
+      id: "demo-tx-12", merchant: "Neighborhood Market", description: "Midweek groceries and snacks", amountCents: demoExpenseAmount(1374, "Food & dining", month), category: "Food & dining", occurredOn: date(4), confidence: 0.96, source: "demo",
     },
     {
       id: "demo-tx-4", merchant: "Campus Print & Supply", description: "Lab print credits and notebook", amountCents: demoExpenseAmount(2840, "School", month), category: "School", occurredOn: date(5), confidence: 0.96, source: "demo",
@@ -168,10 +171,13 @@ export function createDemoWorkspace(month = "2026-07", asOf = new Date()): Works
       id: "demo-tx-9", merchant: month.slice(5) === "10" ? "Student Football" : "Student Cinema", description: month.slice(5) === "10" ? "Home game ticket" : "Movie night ticket", amountCents: demoExpenseAmount(1650, "Fun", month), category: "Fun", occurredOn: date(11), confidence: 0.93, source: "demo",
     },
     {
-      id: "demo-tx-10", merchant: "Corner Grocer", description: "Produce and breakfast staples", amountCents: demoExpenseAmount(4620, "Food & dining", month), category: "Food & dining", occurredOn: date(12), confidence: 0.96, source: "demo",
+      id: "demo-tx-10", merchant: "Corner Grocer", description: "Produce and breakfast staples", amountCents: demoExpenseAmount(2950, "Food & dining", month), category: "Food & dining", occurredOn: date(12), confidence: 0.96, source: "demo",
     },
     {
       id: "demo-tx-11", merchant: "Campus Pharmacy", description: "Cold medicine and toiletries", amountCents: demoExpenseAmount(968, "Other", month), category: "Other", occurredOn: date(13), confidence: 0.95, source: "demo",
+    },
+    {
+      id: "demo-tx-13", merchant: "Corner Grocer", description: "Fruit and breakfast refill", amountCents: demoExpenseAmount(1670, "Food & dining", month), category: "Food & dining", occurredOn: date(15), confidence: 0.95, source: "demo",
     },
   ];
   return {

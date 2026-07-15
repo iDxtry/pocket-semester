@@ -145,18 +145,44 @@ export function goalProgress(goal: StudentGoal | null) {
   };
 }
 
-export function makeWeekSeries(transactions: BudgetTransaction[], month: string) {
-  const [year, monthIndex] = month.split("-").map(Number);
-  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const totals = new Map<number, number>();
+export type MonthDaySeriesPoint = {
+  date: string;
+  day: number;
+  weekday: string;
+  amountCents: number;
+  transactionCount: number;
+  fixedCostLabel: string | null;
+  isUpcoming: boolean;
+};
 
-  for (const transaction of transactions) {
-    const date = new Date(`${transaction.occurredOn}T12:00:00Z`);
-    if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== monthIndex) continue;
-    const day = date.getUTCDay();
-    const mondayIndex = day === 0 ? 6 : day - 1;
-    totals.set(mondayIndex, (totals.get(mondayIndex) ?? 0) + transaction.amountCents);
+const fixedCostCategories = new Set<Category>(["Housing", "Transport", "Subscriptions"]);
+
+export function makeMonthSeries(transactions: BudgetTransaction[], month: string, asOf = new Date()): MonthDaySeriesPoint[] {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const daysInMonth = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
+  const transactionsByDate = new Map<string, BudgetTransaction[]>();
+  const today = asOf.toISOString().slice(0, 10);
+  const state = getMonthState(month, asOf);
+
+  for (const transaction of transactionsForMonth(transactions, month)) {
+    transactionsByDate.set(transaction.occurredOn, [...(transactionsByDate.get(transaction.occurredOn) ?? []), transaction]);
   }
 
-  return days.map((day, index) => ({ day, amount: Math.round((totals.get(index) ?? 0) / 100) }));
+  return Array.from({ length: daysInMonth }, (_, index) => {
+    const day = index + 1;
+    const date = `${month}-${String(day).padStart(2, "0")}`;
+    const dailyTransactions = transactionsByDate.get(date) ?? [];
+    const fixedTransaction = dailyTransactions.find((transaction) => fixedCostCategories.has(transaction.category));
+    const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+
+    return {
+      date,
+      day,
+      weekday,
+      amountCents: dailyTransactions.reduce((total, transaction) => total + transaction.amountCents, 0),
+      transactionCount: dailyTransactions.length,
+      fixedCostLabel: fixedTransaction?.description ?? null,
+      isUpcoming: state !== "past" && date > today,
+    };
+  });
 }
