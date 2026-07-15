@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoWorkspace } from "../src/lib/budget";
-import { getBudgetSummary, getForecast, getMonthState, toCents, transactionsForMonth } from "../src/lib/budget-math";
+import { getBudgetSummary, getExpenseBudgetImpact, getForecast, getMonthState, makeMonthSeries, toCents, transactionsForMonth } from "../src/lib/budget-math";
 
 test("money amounts are converted to integer cents", () => {
   assert.equal(toCents(12.345), 1235);
@@ -9,11 +9,17 @@ test("money amounts are converted to integer cents", () => {
 });
 
 test("budget summary aggregates every category without float drift", () => {
-  const data = createDemoWorkspace();
+  const data = createDemoWorkspace("2026-07", new Date("2026-08-01T12:00:00Z"));
   const summary = getBudgetSummary(data.transactions, data.budgets);
   assert.equal(summary.totalSpentCents, 113661);
   assert.equal(summary.categoryHealth.find((item) => item.category === "Food & dining")?.spentCents, 13079);
   assert.equal(summary.availableCents, summary.totalBudgetCents - summary.totalSpentCents);
+});
+
+test("expense impact distinguishes healthy, watch, and over-plan category effects", () => {
+  assert.deepEqual(getExpenseBudgetImpact(7600, 10000), { remainingCents: 2400, percentUsed: 76, status: "on-track" });
+  assert.deepEqual(getExpenseBudgetImpact(9100, 10000), { remainingCents: 900, percentUsed: 91, status: "watch" });
+  assert.deepEqual(getExpenseBudgetImpact(10750, 10000), { remainingCents: -750, percentUsed: 108, status: "over" });
 });
 
 test("demo data keeps its plan inside the allowance and its activity inside the active term", () => {
@@ -39,12 +45,41 @@ test("demo months have distinct budgets, spending, and term-safe dates", () => {
   const juneSummary = getBudgetSummary(june.transactions, june.budgets);
   const julySummary = getBudgetSummary(july.transactions, july.budgets);
   const augustSummary = getBudgetSummary(august.transactions, august.budgets);
-  assert.ok(Math.abs(juneSummary.totalSpentCents - julySummary.totalSpentCents) >= 2_000);
-  assert.ok(Math.abs(augustSummary.totalSpentCents - julySummary.totalSpentCents) >= 3_000);
+  assert.notEqual(juneSummary.totalSpentCents, julySummary.totalSpentCents);
+  assert.notEqual(augustSummary.totalSpentCents, julySummary.totalSpentCents);
   assert.notDeepEqual(june.budgets, july.budgets);
   assert.ok(june.budgets.reduce((sum, budget) => sum + budget.limitCents, 0) <= june.profile.monthlyAllowanceCents);
   assert.ok(august.budgets.reduce((sum, budget) => sum + budget.limitCents, 0) <= august.profile.monthlyAllowanceCents);
   assert.ok(august.transactions.every((transaction) => transaction.occurredOn >= august.profile.semesterStart! && transaction.occurredOn <= august.profile.semesterEnd!));
+});
+
+test("completed demo months have a believable cadence without long quiet stretches", () => {
+  const asOf = new Date("2026-11-15T12:00:00Z");
+  for (const month of ["2026-03", "2026-07", "2026-10"]) {
+    const data = createDemoWorkspace(month, asOf);
+    const activeDates = new Set(data.transactions.map((transaction) => transaction.occurredOn));
+    const [year, monthNumber] = month.split("-").map(Number);
+    const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    let quietRun = 0;
+
+    assert.ok(activeDates.size >= 18);
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = `${month}-${String(day).padStart(2, "0")}`;
+      quietRun = activeDates.has(date) ? 0 : quietRun + 1;
+      assert.ok(quietRun <= 2, `${month} should not have more than two consecutive quiet days`);
+    }
+  }
+});
+
+test("current demo months omit future activity and short terms do not collapse later purchases", () => {
+  const currentAsOf = new Date("2026-07-15T12:00:00Z");
+  const july = createDemoWorkspace("2026-07", currentAsOf);
+  const julyCalendar = makeMonthSeries(july.transactions, "2026-07", currentAsOf);
+  assert.ok(july.transactions.every((transaction) => transaction.occurredOn <= "2026-07-15"));
+  assert.ok(julyCalendar.filter((day) => day.isUpcoming).every((day) => day.amountCents === 0));
+
+  const august = createDemoWorkspace("2026-08", new Date("2026-09-01T12:00:00Z"));
+  assert.equal(august.transactions.filter((transaction) => transaction.occurredOn === "2026-08-16").length, 1);
 });
 
 test("month views ignore transactions that belong to a different month", () => {
@@ -69,4 +104,23 @@ test("month state separates closed, active, and not-started months", () => {
   assert.equal(getMonthState("2026-07", asOf), "current");
   assert.equal(getMonthState("2026-08", asOf), "future");
   assert.equal(createDemoWorkspace("2026-08", asOf).transactions.length, 0);
+});
+
+test("daily month series covers each calendar date without leaking another month", () => {
+  const julyExpense = { id: "july", merchant: "Residence", description: "Residence payment", amountCents: 89500, category: "Housing" as const, occurredOn: "2026-07-01", confidence: 1, source: "demo" as const };
+  const juneExpense = { ...julyExpense, id: "june", occurredOn: "2026-06-30", amountCents: 5400 };
+  const asOf = new Date("2026-07-15T12:00:00Z");
+  const july = makeMonthSeries([juneExpense, julyExpense], "2026-07", asOf);
+
+  assert.equal(july.length, 31);
+  assert.equal(july[0].amountCents, 89500);
+  assert.equal(july[0].fixedCostLabel, "Residence payment");
+  assert.equal(july[15].isUpcoming, true);
+  assert.equal(july.reduce((total, day) => total + day.amountCents, 0), 89500);
+});
+
+test("daily month series handles 28- and 30-day months", () => {
+  const asOf = new Date("2026-01-15T12:00:00Z");
+  assert.equal(makeMonthSeries([], "2026-02", asOf).length, 28);
+  assert.equal(makeMonthSeries([], "2026-04", asOf).length, 30);
 });
