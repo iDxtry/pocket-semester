@@ -36,9 +36,14 @@ test("demo months have distinct budgets, spending, and term-safe dates", () => {
   const july = createDemoWorkspace("2026-07");
   const august = createDemoWorkspace("2026-08");
 
-  assert.notEqual(getBudgetSummary(june.transactions, june.budgets).totalSpentCents, getBudgetSummary(july.transactions, july.budgets).totalSpentCents);
-  assert.notEqual(getBudgetSummary(july.transactions, july.budgets).totalSpentCents, getBudgetSummary(august.transactions, august.budgets).totalSpentCents);
+  const juneSummary = getBudgetSummary(june.transactions, june.budgets);
+  const julySummary = getBudgetSummary(july.transactions, july.budgets);
+  const augustSummary = getBudgetSummary(august.transactions, august.budgets);
+  assert.ok(Math.abs(juneSummary.totalSpentCents - julySummary.totalSpentCents) >= 2_000);
+  assert.ok(Math.abs(augustSummary.totalSpentCents - julySummary.totalSpentCents) >= 3_000);
   assert.notDeepEqual(june.budgets, july.budgets);
+  assert.ok(june.budgets.reduce((sum, budget) => sum + budget.limitCents, 0) <= june.profile.monthlyAllowanceCents);
+  assert.ok(august.budgets.reduce((sum, budget) => sum + budget.limitCents, 0) <= august.profile.monthlyAllowanceCents);
   assert.ok(august.transactions.every((transaction) => transaction.occurredOn >= august.profile.semesterStart! && transaction.occurredOn <= august.profile.semesterEnd!));
 });
 

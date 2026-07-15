@@ -97,35 +97,38 @@ function demoDayForMonth(month: string, term: { start: string; end: string }, re
   return `${month}-${String(day).padStart(2, "0")}`;
 }
 
-function demoBudgetLimit(category: Category, month: string) {
+const demoBudgetMultipliers: Record<Category, number[]> = {
+  "Food & dining": [1.04, 0.98, 1.02, 1.00, 1.08, 0.92, 1.00, 1.15, 1.08, 1.00, 0.96, 1.05],
+  Housing: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  Transport: [1.00, 1.00, 1.05, 0.95, 0.90, 0.95, 1.00, 1.08, 1.02, 0.98, 1.00, 0.90],
+  School: [1.05, 1.00, 1.08, 0.95, 1.10, 0.80, 1.00, 1.25, 1.10, 0.95, 0.85, 0.75],
+  Subscriptions: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  Fun: [0.92, 1.00, 1.10, 0.95, 0.90, 1.15, 1.00, 1.08, 1.05, 1.15, 0.90, 1.20],
+  Other: [1.00, 0.95, 1.05, 0.95, 1.05, 0.95, 1.00, 1.12, 1.05, 1.00, 0.98, 1.15],
+};
+
+const demoExpenseMultipliers: Record<Category, number[]> = {
+  "Food & dining": [0.97, 0.93, 1.08, 1.00, 1.12, 0.88, 1.00, 1.16, 1.10, 1.02, 0.96, 1.05],
+  Housing: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  Transport: [1.04, 1.00, 0.96, 1.05, 0.92, 0.92, 1.00, 1.08, 1.00, 0.96, 1.02, 0.88],
+  School: [1.10, 1.00, 1.15, 0.96, 1.22, 0.78, 1.00, 1.36, 1.12, 0.94, 0.88, 0.72],
+  Subscriptions: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  Fun: [0.90, 1.00, 1.15, 0.92, 0.85, 1.12, 1.00, 1.08, 1.05, 1.18, 0.90, 1.25],
+  Other: [0.95, 1.00, 1.08, 0.98, 1.10, 0.94, 1.00, 1.18, 1.06, 0.98, 1.14, 1.22],
+};
+
+function demoMonthMultiplier(table: Record<Category, number[]>, category: Category, month: string) {
   const monthNumber = Number(month.slice(5, 7));
-  const distanceFromJuly = monthNumber - 7;
-  const multiplierByCategory: Record<Category, number> = {
-    "Food & dining": 1 + distanceFromJuly * 0.008,
-    Housing: 1,
-    Transport: 1 - distanceFromJuly * 0.008,
-    School: 1 - distanceFromJuly * 0.012,
-    Subscriptions: 1,
-    Fun: 1 + distanceFromJuly * 0.012,
-    Other: 1 + distanceFromJuly * 0.006,
-  };
-  return Math.round((defaultBudgetLimits[category] * multiplierByCategory[category]) / 100) * 100;
+  return table[category][monthNumber - 1] ?? 1;
+}
+
+function demoBudgetLimit(category: Category, month: string) {
+  return Math.round((defaultBudgetLimits[category] * demoMonthMultiplier(demoBudgetMultipliers, category, month)) / 100) * 100;
 }
 
 function demoExpenseAmount(amountCents: number, category: Category, month: string) {
-  const monthNumber = Number(month.slice(5, 7));
-  if (monthNumber === 7) return amountCents;
-  const distanceFromJuly = monthNumber - 7;
-  const multiplierByCategory: Record<Category, number> = {
-    "Food & dining": 1 + distanceFromJuly * 0.045,
-    Housing: 1,
-    Transport: 1 - distanceFromJuly * 0.03,
-    School: 1 - distanceFromJuly * 0.08,
-    Subscriptions: 1,
-    Fun: 1 + distanceFromJuly * 0.05,
-    Other: 1 + distanceFromJuly * 0.03,
-  };
-  return Math.max(350, Math.round((amountCents * multiplierByCategory[category]) / 10) * 10);
+  if (Number(month.slice(5, 7)) === 7) return amountCents;
+  return Math.max(350, Math.round((amountCents * demoMonthMultiplier(demoExpenseMultipliers, category, month)) / 10) * 10);
 }
 
 export function createDemoWorkspace(month = "2026-07"): WorkspaceData {
