@@ -114,6 +114,17 @@ export function getBudgetSummary(transactions: BudgetTransaction[], budgets: Cat
   };
 }
 
+export function getExpenseBudgetImpact(projectedSpentCents: number, limitCents: number) {
+  const remainingCents = limitCents - projectedSpentCents;
+  const percentUsed = limitCents > 0 ? Math.round((projectedSpentCents / limitCents) * 100) : 0;
+
+  return {
+    remainingCents,
+    percentUsed,
+    status: limitCents <= 0 ? "unplanned" as const : remainingCents < 0 ? "over" as const : percentUsed >= 85 ? "watch" as const : "on-track" as const,
+  };
+}
+
 export function getForecast(totalSpentCents: number, month: string, asOf = new Date(), fixedSpendCents = 0) {
   const [year, monthIndex] = month.split("-").map(Number);
   const daysInMonth = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();

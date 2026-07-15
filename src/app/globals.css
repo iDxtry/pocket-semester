@@ -239,6 +239,9 @@ svg { flex: 0 0 auto; }
 .categorization-details > div:nth-last-child(-n + 2) { border-bottom: 0; }
 .categorization-details small { color: var(--muted); font-size: 10px; }
 .categorization-details strong { font-size: 12px; line-height: 1.4; }
+.categorization-details .expense-consequence { padding-inline: 10px; border-bottom: 0; border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent-soft) 52%, transparent); }
+.categorization-details .expense-consequence.over { border-left-color: var(--danger); background: color-mix(in srgb, var(--danger-soft) 62%, transparent); }
+.categorization-details .expense-consequence.runway { border-left-color: var(--chart-3); background: color-mix(in srgb, var(--chart-3) 9%, transparent); }
 .categorization-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .main-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.8fr); gap: 14px; margin-top: 14px; }
 .panel { padding: 20px; }

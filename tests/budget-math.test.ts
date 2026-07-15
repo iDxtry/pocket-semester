@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoWorkspace } from "../src/lib/budget";
-import { getBudgetSummary, getForecast, getMonthState, makeMonthSeries, toCents, transactionsForMonth } from "../src/lib/budget-math";
+import { getBudgetSummary, getExpenseBudgetImpact, getForecast, getMonthState, makeMonthSeries, toCents, transactionsForMonth } from "../src/lib/budget-math";
 
 test("money amounts are converted to integer cents", () => {
   assert.equal(toCents(12.345), 1235);
@@ -14,6 +14,12 @@ test("budget summary aggregates every category without float drift", () => {
   assert.equal(summary.totalSpentCents, 113661);
   assert.equal(summary.categoryHealth.find((item) => item.category === "Food & dining")?.spentCents, 13079);
   assert.equal(summary.availableCents, summary.totalBudgetCents - summary.totalSpentCents);
+});
+
+test("expense impact distinguishes healthy, watch, and over-plan category effects", () => {
+  assert.deepEqual(getExpenseBudgetImpact(7600, 10000), { remainingCents: 2400, percentUsed: 76, status: "on-track" });
+  assert.deepEqual(getExpenseBudgetImpact(9100, 10000), { remainingCents: 900, percentUsed: 91, status: "watch" });
+  assert.deepEqual(getExpenseBudgetImpact(10750, 10000), { remainingCents: -750, percentUsed: 108, status: "over" });
 });
 
 test("demo data keeps its plan inside the allowance and its activity inside the active term", () => {

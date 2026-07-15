@@ -17,10 +17,10 @@ The demo uses a fictional student and does not connect to a bank account or requ
 ## Judge path
 
 1. Open [the public demo](https://pocket-semester.vercel.app/demo).
-2. See the fictional runway scenario, then toggle a tradeoff to change the finals buffer.
-3. Choose **Add expense**, leave the category on auto, and save it.
-4. Review category, confidence band, rationale, category effect, and provider label.
-5. Refresh the coach plan while viewing the current month.
+2. Choose **Add expense**, leave the category on auto, and save it.
+3. Review its category, confidence band, category consequence, and live finals-buffer effect.
+4. Toggle a runway tradeoff to see the calculated buffer change.
+5. Refresh the coach plan while viewing the current month. The result is labeled with its actual provider.
 
 The sample import file is [public/samples/pocket-semester-demo.csv](public/samples/pocket-semester-demo.csv).
 
@@ -77,6 +77,8 @@ Tests cover cents math, forecasts, month states, seasonal demo fixtures, CSV val
 Build Week provides Codex credits, not OpenAI API credits. Pocket Semester therefore uses **GPT-5.6 through Codex for the substantive build work** and Gemini for the deployed runtime AI. This is intentional and disclosed in the product, README, and demo video.
 
 Codex with GPT-5.6 accelerated the product framing, semester-runway engine, provider boundary, structured schemas, mobile/accessibility improvements, test coverage, visual audits, and final submission materials. The human builder selected the student problem, the money assumptions, privacy boundaries, and the final design direction. See [docs/build-week.md](docs/build-week.md) for the dated build record.
+
+Paste-ready [Devpost copy](docs/devpost-submission.md) and the [under-three-minute demo script](docs/demo-video.md) preserve this same runtime/build-time distinction.
 
 ## Privacy
 
