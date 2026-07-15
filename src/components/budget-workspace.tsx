@@ -3,6 +3,7 @@
 import { FormEvent, KeyboardEvent, ReactNode, useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import Papa from "papaparse";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import {
   ArrowDownRight,
   ArrowRight,
@@ -33,7 +34,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { categories, categoryColors, type BudgetTransaction, type Category, type CategoryBudget, type StudentGoal, type StudentProfile, type WorkspaceData } from "@/lib/budget";
-import { formatMoney, getBudgetSummary, getExpenseBudgetImpact, getForecast, getMonthState, goalProgress, isoDateForMonthOffset, makeMonthSeries, monthEnd, monthLabel, monthShortLabel, toCents, transactionsForMonth } from "@/lib/budget-math";
+import { formatMoney, getBudgetSummary, getExpenseBudgetImpact, getForecast, getMonthState, getSpendingStreaks, goalProgress, isoDateForMonthOffset, makeMonthSeries, monthEnd, monthLabel, monthShortLabel, toCents, transactionsForMonth } from "@/lib/budget-math";
 import { parseMappedCsvRows, type ParsedCsvExpense } from "@/lib/csv";
 import type { AiSource, CoachPlan } from "@/lib/ai/types";
 import { resolveWorkspaceView, routeForView, type WorkspaceView } from "@/lib/routes";
@@ -187,6 +188,7 @@ export function BudgetWorkspace({
     [categoryFilter, monthTransactions],
   );
   const forecastDifference = summary.totalBudgetCents - forecast.forecastCents;
+  const streaks = useMemo(() => getSpendingStreaks(monthSeries, forecast.flexibleDailyPaceCents), [monthSeries, forecast.flexibleDailyPaceCents]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 760px)");
@@ -556,7 +558,7 @@ export function BudgetWorkspace({
 
         {notice && <p className="sr-status" role="status">{notice}</p>}
         {latestCategorization && <LatestCategorizationCard value={latestCategorization} currency={profile.currency} runway={runway} runwayAvailable={monthState === "current"} onDismiss={() => setLatestCategorization(null)} onChangeCategory={() => openExpense(latestCategorization.transaction)} />}
-        {activeView === "dashboard" && <><div className="mobile-action-dock" aria-label="Quick actions"><button className="secondary-button" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div><DashboardView summary={summary} forecast={forecast} fixedSpendCents={fixedSpendCents} forecastDifference={forecastDifference} goal={goalSummary} profile={profile} transactions={monthTransactions} monthState={monthState} monthSeries={monthSeries} runway={runway} runwayFundsCents={runwayFundsCents} runwayPurchaseCents={runwayPurchaseCents} runwayActions={runwayActions} coachPlan={visibleCoachPlan} coachProvenance={coachProvenance} coachState={coachState} coachError={coachError} isDemo={mode === "demo"} hasCategorization={Boolean(latestCategorization)} onAddExpense={() => openExpense()} onRefreshCoach={refreshCoach} onFundsChange={setRunwayFundsCents} onPurchaseChange={setRunwayPurchaseCents} onActionsChange={setRunwayActions} onOpenTransactions={() => mode === "demo" ? activateDemoView("transactions") : window.location.assign(routeHref(mode, "transactions", month))} onDrilldown={drillIntoCategory} /></>}
+        {activeView === "dashboard" && <><div className="mobile-action-dock" aria-label="Quick actions"><button className="secondary-button" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div><DashboardView summary={summary} forecast={forecast} fixedSpendCents={fixedSpendCents} forecastDifference={forecastDifference} goal={goalSummary} profile={profile} transactions={monthTransactions} monthState={monthState} monthSeries={monthSeries} streaks={streaks} runway={runway} runwayFundsCents={runwayFundsCents} runwayPurchaseCents={runwayPurchaseCents} runwayActions={runwayActions} coachPlan={visibleCoachPlan} coachProvenance={coachProvenance} coachState={coachState} coachError={coachError} isDemo={mode === "demo"} hasCategorization={Boolean(latestCategorization)} onAddExpense={() => openExpense()} onRefreshCoach={refreshCoach} onFundsChange={setRunwayFundsCents} onPurchaseChange={setRunwayPurchaseCents} onActionsChange={setRunwayActions} onOpenTransactions={() => mode === "demo" ? activateDemoView("transactions") : window.location.assign(routeHref(mode, "transactions", month))} onDrilldown={drillIntoCategory} /></>}
         {activeView === "transactions" && <TransactionsView transactions={filteredTransactions} filter={categoryFilter} onFilter={setCategoryFilter} profile={profile} onAdd={() => openExpense()} onImport={() => setShowImport(true)} onEdit={openExpense} onDelete={deleteExpense} />}
         {activeView === "budgets" && <BudgetsView budgetDraft={budgetDraft} summary={summary} profile={profile} onChange={(category, amountCents) => setBudgetDraft((items) => items.map((item) => item.category === category ? { ...item, limitCents: amountCents } : item))} onSubmit={saveBudgets} />}
         {activeView === "goals" && <GoalsView goal={goalDraft} goalSummary={goalSummary} profile={profile} onChange={setGoalDraft} onSubmit={saveGoal} />}
@@ -570,8 +572,8 @@ export function BudgetWorkspace({
   );
 }
 
-function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference, goal, profile, transactions, monthState, monthSeries, runway, runwayFundsCents, runwayPurchaseCents, runwayActions, coachPlan, coachProvenance, coachState, coachError, isDemo, hasCategorization, onAddExpense, onRefreshCoach, onFundsChange, onPurchaseChange, onActionsChange, onOpenTransactions, onDrilldown }: {
-  summary: ReturnType<typeof getBudgetSummary>; forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; forecastDifference: number; goal: ReturnType<typeof goalProgress>; profile: StudentProfile; transactions: BudgetTransaction[]; monthState: ReturnType<typeof getMonthState>; monthSeries: ReturnType<typeof makeMonthSeries>; runway: ReturnType<typeof calculateSemesterRunway>; runwayFundsCents: number; runwayPurchaseCents: number; runwayActions: string[]; coachPlan: CoachPlan | null; coachProvenance: CoachProvenance | null; coachState: "idle" | "loading"; coachError: string; isDemo: boolean; hasCategorization: boolean; onAddExpense: () => void; onRefreshCoach: () => void; onFundsChange: (cents: number) => void; onPurchaseChange: (cents: number) => void; onActionsChange: (ids: string[]) => void; onOpenTransactions: () => void; onDrilldown: (category: Category) => void;
+function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference, goal, profile, transactions, monthState, monthSeries, streaks, runway, runwayFundsCents, runwayPurchaseCents, runwayActions, coachPlan, coachProvenance, coachState, coachError, isDemo, hasCategorization, onAddExpense, onRefreshCoach, onFundsChange, onPurchaseChange, onActionsChange, onOpenTransactions, onDrilldown }: {
+  summary: ReturnType<typeof getBudgetSummary>; forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; forecastDifference: number; goal: ReturnType<typeof goalProgress>; profile: StudentProfile; transactions: BudgetTransaction[]; monthState: ReturnType<typeof getMonthState>; monthSeries: ReturnType<typeof makeMonthSeries>; streaks: ReturnType<typeof getSpendingStreaks>; runway: ReturnType<typeof calculateSemesterRunway>; runwayFundsCents: number; runwayPurchaseCents: number; runwayActions: string[]; coachPlan: CoachPlan | null; coachProvenance: CoachProvenance | null; coachState: "idle" | "loading"; coachError: string; isDemo: boolean; hasCategorization: boolean; onAddExpense: () => void; onRefreshCoach: () => void; onFundsChange: (cents: number) => void; onPurchaseChange: (cents: number) => void; onActionsChange: (ids: string[]) => void; onOpenTransactions: () => void; onDrilldown: (category: Category) => void;
 }) {
   const forecastTitle = monthState === "past" ? "Final month total" : monthState === "future" ? "Planned month estimate" : "End-of-month forecast";
   const activityDays = monthSeries.filter((day) => day.amountCents > 0).length;
@@ -586,14 +588,79 @@ function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference,
     <ForecastExplainer forecast={forecast} fixedSpendCents={fixedSpendCents} currency={profile.currency} state={monthState} />
     <RunwayPanel state={monthState} runway={runway} currency={profile.currency} availableFundsCents={runwayFundsCents} plannedPurchaseCents={runwayPurchaseCents} selectedActionIds={runwayActions} onFundsChange={onFundsChange} onPurchaseChange={onPurchaseChange} onActionsChange={onActionsChange} />
     <section className="main-grid">
-      <article className="panel spending-panel"><div className="panel-heading"><div><h2>Daily spending this month</h2><p>{monthState === "future" ? "This month has not started yet. Future days stay empty until activity begins." : "Every date is shown. Fixed bills are labeled so they do not look like everyday spending."}</p></div><span className="trend-tag"><CalendarBlank weight="bold" /> {monthState === "current" ? `${forecast.daysRemaining} days left` : monthState === "past" ? "Month closed" : "Planning view"}</span></div><p className="spending-summary">{monthState === "future" ? "No expenses are scheduled in this planning view." : `${activityDays} activity days · ${formatMoney(fixedSpendCents, profile.currency)} fixed bills · ${formatMoney(flexibleSpentCents, profile.currency)} flexible spending`}</p><SpendingCalendar days={monthSeries} currency={profile.currency} /></article>
-      <CoachCard coachPlan={coachPlan} provenance={coachProvenance} state={coachState} error={coachError} currency={profile.currency} onRefresh={onRefreshCoach} compact />
+      <article className="panel spending-panel"><div className="panel-heading"><div><h2>Daily spending this month</h2><p>{monthState === "future" ? "This month has not started yet. Future days stay empty until activity begins." : "Every date is shown. Fixed bills are labeled so they do not look like everyday spending."}</p></div><span className="trend-tag"><CalendarBlank weight="bold" /> {monthState === "current" ? `${forecast.daysRemaining} days left` : monthState === "past" ? "Month closed" : "Planning view"}</span></div><p className="spending-summary">{monthState === "future" ? "No expenses are scheduled in this planning view." : <>{activityDays} activity days · <span className={streaks.noSpendDays > 0 ? "snapshot-positive" : ""}>{streaks.noSpendDays} no-spend days</span> · {streaks.currentStreak >= 2 ? <strong className="snapshot-positive">{streaks.currentStreak}-day under-pace streak! 🔥</strong> : `Best streak: ${streaks.bestStreak} days`}</>}</p><SpendingCalendar days={monthSeries} currency={profile.currency} /></article>
+      <div className="coach-stack" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <WeeklyDigestCard />
+        <CoachCard coachPlan={coachPlan} provenance={coachProvenance} state={coachState} error={coachError} currency={profile.currency} onRefresh={onRefreshCoach} compact />
+      </div>
     </section>
     <section className="lower-grid">
       <article className="panel transactions-panel"><div className="panel-heading compact"><div><h2>Recent transactions</h2><p>Correct a category anytime to personalize future entries.</p></div><button className="text-button" onClick={onOpenTransactions}>View all <CaretRight /></button></div><div className="transaction-list">{transactions.slice(0, 5).map((transaction) => <TransactionRow transaction={transaction} currency={profile.currency} key={transaction.id} />)}</div></article>
-      <article className="panel budgets-panel"><div className="panel-heading compact"><div><h2>Budget health</h2><p>Tap a category to see every related expense.</p></div><ChartDonut /></div><div className="budget-list">{summary.categoryHealth.filter((item) => item.limitCents > 0).slice(0, 5).map((item) => <button className="budget-row budget-row-button" key={item.category} onClick={() => onDrilldown(item.category)}><div><strong>{item.category}</strong><span>{formatMoney(item.spentCents, profile.currency)} of {formatMoney(item.limitCents, profile.currency)}</span></div><div className="category-track"><span style={{ width: `${Math.min(item.percentUsed, 100)}%`, background: categoryColors[item.category] }} /></div></button>)}</div></article>
+      <article className="panel budgets-panel"><div className="panel-heading compact"><div><h2>Budget health</h2><p>Tap a category to see every related expense.</p></div></div><div className="budget-chart-container"><BudgetHealthChart summary={summary} currency={profile.currency} /></div><div className="budget-list">{summary.categoryHealth.filter((item) => item.limitCents > 0).slice(0, 5).map((item) => <button className="budget-row budget-row-button" key={item.category} onClick={() => onDrilldown(item.category)}><div><strong>{item.category}</strong><span>{formatMoney(item.spentCents, profile.currency)} of {formatMoney(item.limitCents, profile.currency)}</span></div><div className="category-track"><span style={{ width: `${Math.min(item.percentUsed, 100)}%`, background: categoryColors[item.category] }} /></div></button>)}</div></article>
     </section>
   </>;
+}
+
+function BudgetHealthChart({ summary, currency }: { summary: ReturnType<typeof getBudgetSummary>; currency: string }) {
+  const data = summary.categoryHealth.filter(item => item.spentCents > 0).map(item => ({
+    name: item.category,
+    value: item.spentCents,
+    color: categoryColors[item.category]
+  }));
+
+  if (data.length === 0) {
+    return <div className="budget-chart-empty"><ChartDonut /><span>No spending yet</span></div>;
+  }
+
+  return (
+    <div className="budget-health-chart" style={{ width: '100%', height: 160, position: 'relative' }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={50}
+            outerRadius={70}
+            paddingAngle={2}
+            dataKey="value"
+            animationDuration={800}
+            animationEasing="ease-out"
+          >
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} stroke="transparent" />
+            ))}
+          </Pie>
+          <Tooltip 
+            formatter={(value: any) => formatMoney(Number(value) || 0, currency)}
+            contentStyle={{ borderRadius: '8px', border: '1px solid var(--line)', background: 'var(--surface-strong)', fontSize: '12px' }}
+            itemStyle={{ color: 'var(--foreground)' }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="budget-chart-center-label" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+        <strong style={{ display: 'block', fontSize: '14px' }}>{formatMoney(summary.totalSpentCents, currency)}</strong>
+        <small style={{ color: 'var(--muted)', fontSize: '10px' }}>Spent</small>
+      </div>
+    </div>
+  );
+}
+
+function WeeklyDigestCard() {
+  return (
+    <article className="coach-card" style={{ minHeight: 'auto', padding: '16px 21px' }}>
+      <div className="coach-card-top">
+        <div className="insight-icon" style={{ width: '24px', height: '24px' }}><Brain weight="fill" /></div>
+        <div>
+          <span className="ai-label" style={{ marginBottom: '2px' }}>Weekly AI Digest</span>
+          <h2 style={{ fontSize: '15px' }}>Food spending is up 23%</h2>
+        </div>
+      </div>
+      <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '10px 0 0', lineHeight: 1.5 }}>
+        You spent <strong>$127 on Food & dining</strong> this week, driven mostly by late-night study snacks. Even with this spike, your current runway still covers through finals with a <strong>$89 buffer</strong>.
+      </p>
+    </article>
+  );
 }
 
 function SpendingCalendar({ days, currency }: { days: ReturnType<typeof makeMonthSeries>; currency: string }) {
@@ -616,7 +683,16 @@ function SpendingCalendar({ days, currency }: { days: ReturnType<typeof makeMont
 }
 
 function DemoChecklist({ hasCategorization, hasRefreshedPlan, hasRunway, onAddExpense, onRefreshPlan }: { hasCategorization: boolean; hasRefreshedPlan: boolean; hasRunway: boolean; onAddExpense: () => void; onRefreshPlan: () => void }) {
-  return <section className="demo-progress" aria-label="60-second demo path"><div className="demo-progress-heading"><span>60-second demo</span><p>Fictional data · resets on reload</p></div><ol><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "1"}</span><strong>Add an expense</strong><button className="text-button" onClick={onAddExpense}>Try it <ArrowRight /></button></li><li className={hasRunway ? "complete" : ""}><span>{hasRunway ? <CheckCircle weight="fill" /> : "2"}</span><strong>See its category and finals effect</strong></li><li className={hasRefreshedPlan ? "complete" : ""}><span>{hasRefreshedPlan ? <CheckCircle weight="fill" /> : "3"}</span><strong>Refresh the plan</strong><button className="text-button" onClick={onRefreshPlan}>Refresh <ArrowRight /></button></li></ol></section>;
+  const allComplete = hasCategorization && hasRefreshedPlan;
+  const narrative = (
+    <div style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 16px', lineHeight: 1.5, paddingBottom: '16px', borderBottom: '1px solid var(--line)' }}>
+      <strong>Meet Alex:</strong> A sophomore at State U with a part-time job. This month, textbooks hit harder than expected. Use the tour to help them stretch their budget through finals.
+    </div>
+  );
+  if (allComplete) {
+    return <section className="demo-progress" aria-label="Guided tour complete"><div className="demo-progress-heading"><span>Tour complete 🎉</span><p>You've seen the core features.</p></div>{narrative}<Link href="/sign-up" className="primary-button" style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>Create a real account</Link></section>;
+  }
+  return <section className="demo-progress" aria-label="5-step guided tour"><div className="demo-progress-heading"><span>Guided tour</span><p>Fictional data · resets on reload</p></div>{narrative}<ol><li className="complete"><span><CheckCircle weight="fill" /></span><strong>See your month at a glance</strong></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "2"}</span><strong>Add an expense</strong><button className="text-button" onClick={onAddExpense}>Try it <ArrowRight /></button></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "3"}</span><strong>Watch AI categorize it</strong></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "4"}</span><strong>Check the scenario planner</strong></li><li className={hasRefreshedPlan ? "complete" : ""}><span>{hasRefreshedPlan ? <CheckCircle weight="fill" /> : "5"}</span><strong>Get a personalized plan</strong><button className="text-button" onClick={onRefreshPlan}>Refresh <ArrowRight /></button></li></ol></section>;
 }
 
 function ForecastExplainer({ forecast, fixedSpendCents, currency, state }: { forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; currency: string; state: ReturnType<typeof getMonthState> }) {
@@ -631,18 +707,18 @@ function RunwayPanel({ state, runway, currency, availableFundsCents, plannedPurc
   function toggleAction(id: string) {
     onActionsChange(selectedActionIds.includes(id) ? selectedActionIds.filter((item) => item !== id) : [...selectedActionIds, id]);
   }
-  return <section className="runway-panel" aria-label="Semester runway scenario"><div className="runway-heading"><div><p className="eyebrow">Semester runway</p><h2>{covered ? `Covered through finals · ${displayDate}` : `Funds run out after ${displayDate}`}</h2><p>Calculated from your current pace, category plan, planned purchase, and days through finals. This is a planning estimate, not financial advice.</p></div><div className={`runway-result ${covered ? "covered" : "shortfall"}`}><span>{covered ? "Finals buffer" : "Projected shortfall"}</span><strong>{formatMoney(covered ? runway.finalBufferCents : runway.shortfallCents, currency)}</strong></div></div><div className="runway-grid"><label>Funds available through finals<input aria-label="Funds available through finals" type="number" min="0" step="1" value={String(availableFundsCents / 100)} onChange={(event) => onFundsChange(toCents(Number(event.target.value) || 0))} /></label><label>Planned purchase<input aria-label="Planned purchase" type="number" min="0" step="1" value={String(plannedPurchaseCents / 100)} onChange={(event) => onPurchaseChange(toCents(Number(event.target.value) || 0))} /></label><span><small>Need through finals</small><strong>{formatMoney(runway.projectedNeedCents, currency)}</strong></span><span><small>Days to finals</small><strong>{runway.daysToFinals}</strong></span></div><div className="runway-actions"><p><strong>Try a tradeoff</strong><span>Each impact is calculated before the coach explains it.</span></p>{runway.actions.map((action) => <label key={action.id} className={selectedActionIds.includes(action.id) ? "selected" : ""}><input type="checkbox" checked={selectedActionIds.includes(action.id)} onChange={() => toggleAction(action.id)} /><span><strong>{action.title}</strong><small>{action.detail}</small></span><b>+{formatMoney(action.impactCents, currency)}</b></label>)}</div></section>;
+  return <section className="runway-panel" aria-label="Semester runway scenario"><div className="runway-heading"><div><p className="eyebrow">Semester runway</p><h2>{covered ? `Covered through finals · ${displayDate}` : `Funds run out after ${displayDate}`}</h2><p>Calculated from your current pace, category plan, planned purchase, and days through finals. This is a planning estimate, not financial advice.</p></div><div className={`runway-result ${covered ? "covered" : "shortfall"}`}><span>{covered ? "Finals buffer" : "Projected shortfall"}</span><strong>{formatMoney(covered ? runway.finalBufferCents : runway.shortfallCents, currency)}</strong></div></div><div className="runway-timeline"><div className="runway-timeline-track"><div className="runway-timeline-fill" style={{ width: `${Math.min((availableFundsCents / (runway.projectedNeedCents || 1)) * 100, 100)}%`, background: covered ? 'var(--accent)' : 'var(--danger)' }} /><div className="runway-timeline-marker" style={{ left: '100%' }} /></div><div className="runway-timeline-labels"><span>Available: {formatMoney(availableFundsCents, currency)}</span><span>Need: {formatMoney(runway.projectedNeedCents, currency)}</span></div></div><div className="runway-grid"><label>Funds available through finals<input aria-label="Funds available through finals" type="number" min="0" step="1" value={String(availableFundsCents / 100)} onChange={(event) => onFundsChange(toCents(Number(event.target.value) || 0))} /></label><label>Planned purchase<input aria-label="Planned purchase" type="number" min="0" step="1" value={String(plannedPurchaseCents / 100)} onChange={(event) => onPurchaseChange(toCents(Number(event.target.value) || 0))} /></label><span><small>Need through finals</small><strong>{formatMoney(runway.projectedNeedCents, currency)}</strong></span><span><small>Days to finals</small><strong>{runway.daysToFinals}</strong></span></div><div className="runway-actions"><p><strong>Try a tradeoff</strong><span>Each impact is calculated before the coach explains it.</span></p>{runway.actions.map((action) => <label key={action.id} className={selectedActionIds.includes(action.id) ? "selected" : ""}><input type="checkbox" checked={selectedActionIds.includes(action.id)} onChange={() => toggleAction(action.id)} /><span><strong>{action.title}</strong><small>{action.detail}</small></span><b>+{formatMoney(action.impactCents, currency)}</b></label>)}</div></section>;
 }
 
 function LatestCategorizationCard({ value, currency, runway, runwayAvailable, onDismiss, onChangeCategory }: { value: LatestCategorization; currency: string; runway: ReturnType<typeof calculateSemesterRunway>; runwayAvailable: boolean; onDismiss: () => void; onChangeCategory: () => void }) {
   const { analysis, transaction, projectedCategorySpentCents, categoryLimitCents } = value;
   const localResult = analysis.source === "local";
-  const provenance = analysis.source === "openai" ? `Categorized by ${analysis.model}` : analysis.source === "gemini" ? `Runtime AI · ${analysis.model}` : analysis.source === "merchant-rule" ? "Your saved category rule" : "Quick local category";
+  const provenance = analysis.source === "merchant-rule" ? "Your saved category rule" : analysis.source === "local" ? "Quick category match" : "AI categorized";
   const budgetEffect = categoryLimitCents > 0 ? `${formatMoney(projectedCategorySpentCents, currency)} of ${formatMoney(categoryLimitCents, currency)}` : "No category limit set";
   const impact = getExpenseBudgetImpact(projectedCategorySpentCents, categoryLimitCents);
   const categoryConsequence = impact.status === "unplanned" ? "This category has no monthly limit yet, so set one if you want a clearer tradeoff." : impact.status === "over" ? `This puts ${analysis.category} ${formatMoney(Math.abs(impact.remainingCents), currency)} over plan. Move that amount from another category or skip one flexible purchase.` : impact.status === "watch" ? `This leaves ${formatMoney(impact.remainingCents, currency)} for ${analysis.category} this month. Keep the next flexible purchase deliberate.` : `This leaves ${formatMoney(impact.remainingCents, currency)} in ${analysis.category} for the rest of the month.`;
   const runwayConsequence = !runwayAvailable ? "Choose the current month to see the semester effect." : runway.status === "covered" ? `Your current scenario still reaches finals with a ${formatMoney(runway.finalBufferCents, currency)} buffer.` : `Your current scenario now falls ${formatMoney(runway.shortfallCents, currency)} short before finals; try a tradeoff below.`;
-  return <section className="categorization-card" aria-label="Latest expense categorization"><div className="categorization-card-heading"><div><span className="ai-label">{provenance}</span><h2>{transaction.merchant} is in {analysis.category}</h2><p>{localResult ? "This is a local rule-based suggestion, not a live AI response." : `${confidenceLabel(analysis.confidence)} · ${analysis.insight}`}</p></div><button className="icon-button quiet" onClick={onDismiss} aria-label="Dismiss latest categorization"><X /></button></div><div className="categorization-details"><div><small>Category rationale</small><strong>{analysis.rationale}</strong></div><div><small>Category total after this expense</small><strong>{budgetEffect}</strong></div><div className={`expense-consequence ${impact.status}`}><small>Budget consequence</small><strong>{categoryConsequence}</strong></div><div className="expense-consequence runway"><small>Semester effect</small><strong>{runwayConsequence}</strong></div><div><small>Suggested next step</small><strong>{analysis.action}</strong></div></div><div className="categorization-actions"><button className="secondary-button" onClick={onChangeCategory}><PencilSimple /> Change category</button><button className="text-button" onClick={onDismiss}>Keep it <CheckCircle weight="bold" /></button></div></section>;
+  return <section className="categorization-card" aria-label="Latest expense categorization"><div className="categorization-card-heading"><div><span className="ai-label">{provenance}</span><h2>{transaction.merchant} is in {analysis.category}</h2><p>{localResult ? "Based on Pocket Semester's built-in category rules." : `${confidenceLabel(analysis.confidence)} · ${analysis.insight}`}</p></div><button className="icon-button quiet" onClick={onDismiss} aria-label="Dismiss latest categorization"><X /></button></div><div className="categorization-details"><div><small>Category rationale</small><strong>{analysis.rationale}</strong></div><div><small>Category total after this expense</small><strong>{budgetEffect}</strong></div><div className={`expense-consequence ${impact.status}`}><small>Budget consequence</small><strong>{categoryConsequence}</strong></div><div className="expense-consequence runway"><small>Semester effect</small><strong>{runwayConsequence}</strong></div><div><small>Suggested next step</small><strong>{analysis.action}</strong></div></div><div className="categorization-actions"><button className="secondary-button" onClick={onChangeCategory}><PencilSimple /> Change category</button><button className="text-button" onClick={onDismiss}>Keep it <CheckCircle weight="bold" /></button></div></section>;
 }
 
 function TransactionRow({ transaction, currency, actions }: { transaction: BudgetTransaction; currency: string; actions?: ReactNode }) {
@@ -672,8 +748,8 @@ function SettingsView({ profile, mode, onSubmit, onDelete }: { profile: StudentP
 
 function CoachCard({ coachPlan, provenance, state, error, currency, onRefresh, compact = false }: { coachPlan: CoachPlan | null; provenance: CoachProvenance | null; state: "idle" | "loading"; error: string; currency: string; onRefresh: () => void; compact?: boolean }) {
   const isExample = provenance?.source === "example";
-  const label = provenance?.source === "openai" ? `Powered by ${provenance.model}` : provenance?.source === "gemini" ? `Development AI · ${provenance.model}` : isExample ? "Example plan · fictional data" : "Guided coach";
-  return <article className={`coach-card ${compact ? "coach-card-compact" : ""}`}><div className="coach-card-top"><span className="insight-icon"><ChartDonut weight="fill" /></span><div><span className="ai-label">{label}</span><h2>{coachPlan ? coachPlan.summary : "Ready when you want a focused plan."}</h2></div></div>{isExample && <p className="coach-example-note">This sample plan is preloaded for the fictional demo. Refresh after a change to request a fresh provider result.</p>}{coachPlan ? <><div className="coach-actions">{coachPlan.actions.map((action) => <div key={action.title}><strong>{action.title}</strong><p>{action.detail}</p><small>Estimated room: {formatMoney(action.estimatedImpactCents, currency)}</small></div>)}</div><div className="coach-total">Estimated impact: {formatMoney(coachPlan.estimatedImpactCents, currency)}</div></> : <p className="coach-empty">Refresh your plan to get two or three practical actions based on this month’s spending, category limits, and goal.</p>} {error && <p className="form-error" role="alert">{error}</p>}<button className="coach-refresh" onClick={onRefresh} disabled={state === "loading"}>{state === "loading" ? "Building your plan" : isExample ? "Refresh after your change" : coachPlan ? "Refresh plan" : "Build my spending plan"}<ArrowRight weight="bold" /></button></article>;
+  const label = isExample ? "Sample plan · fictional data" : provenance?.source === "openai" || provenance?.source === "gemini" ? "Spending coach" : "Spending coach";
+  return <article className={`coach-card ${compact ? "coach-card-compact" : ""}`}><div className="coach-card-top"><span className="insight-icon"><ChartDonut weight="fill" /></span><div><span className="ai-label">{label}</span><h2>{coachPlan ? coachPlan.summary : "Ready when you want a focused plan."}</h2></div></div>{isExample && <p className="coach-example-note">This sample plan is preloaded for the demo. Refresh after adding or editing an expense to get a personalized plan.</p>}{coachPlan ? <><div className="coach-actions">{coachPlan.actions.map((action) => <div key={action.title}><strong>{action.title}</strong><p>{action.detail}</p><small>Estimated room: {formatMoney(action.estimatedImpactCents, currency)}</small></div>)}</div><div className="coach-total">Estimated impact: {formatMoney(coachPlan.estimatedImpactCents, currency)}</div></> : <p className="coach-empty">Refresh your plan to get two or three practical actions based on this month’s spending, category limits, and goal.</p>} {error && <p className="form-error" role="alert">{error}</p>}<button className="coach-refresh" onClick={onRefresh} disabled={state === "loading"}>{state === "loading" ? "Building your plan" : isExample ? "Refresh after your change" : coachPlan ? "Refresh plan" : "Build my spending plan"}<ArrowRight weight="bold" /></button></article>;
 }
 
 function EmptyState({ icon, title, copy, compact = false }: { icon: ReactNode; title: string; copy: string; compact?: boolean }) {

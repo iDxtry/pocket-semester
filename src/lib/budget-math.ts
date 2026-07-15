@@ -197,3 +197,39 @@ export function makeMonthSeries(transactions: BudgetTransaction[], month: string
     };
   });
 }
+
+export type SpendingStreaks = {
+  currentStreak: number;
+  bestStreak: number;
+  noSpendDays: number;
+  activeDays: number;
+};
+
+export function getSpendingStreaks(monthSeries: MonthDaySeriesPoint[], dailyPaceCents: number): SpendingStreaks {
+  let currentStreak = 0;
+  let bestStreak = 0;
+  let noSpendDays = 0;
+  let activeDays = 0;
+  let runningStreak = 0;
+
+  for (const day of monthSeries) {
+    if (day.isUpcoming) continue;
+    activeDays++;
+
+    const flexibleSpend = day.fixedCostLabel ? 0 : day.amountCents;
+    const underPace = flexibleSpend <= dailyPaceCents;
+    const isNoSpend = day.amountCents === 0 && !day.fixedCostLabel;
+
+    if (isNoSpend) noSpendDays++;
+
+    if (underPace) {
+      runningStreak++;
+    } else {
+      runningStreak = 0;
+    }
+    bestStreak = Math.max(bestStreak, runningStreak);
+  }
+
+  currentStreak = runningStreak;
+  return { currentStreak, bestStreak, noSpendDays, activeDays };
+}
