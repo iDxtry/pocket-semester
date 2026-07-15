@@ -1,10 +1,20 @@
 import { z } from "zod";
 import { categories } from "@/lib/budget";
+import { isValidIsoDate, isValidMonth } from "@/lib/budget-math";
 
 export const categorySchema = z.enum(categories);
 
-const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date.");
-const monthSchema = z.string().regex(/^\d{4}-\d{2}$/, "Use a YYYY-MM month.");
+export const signInSchema = z.object({
+  email: z.string().trim().email().max(160),
+  password: z.string().min(8).max(128),
+});
+
+export const signUpSchema = signInSchema.extend({
+  displayName: z.string().trim().min(1).max(80),
+});
+
+const isoDateSchema = z.string().refine(isValidIsoDate, "Use a real YYYY-MM-DD calendar date.");
+const monthSchema = z.string().refine(isValidMonth, "Use a valid YYYY-MM month.");
 
 export const expenseAnalysisRequestSchema = z.object({
   merchant: z.string().trim().min(1).max(80),

@@ -34,6 +34,7 @@ test("expense provenance stays truthful for local fallback and OpenAI results", 
   const openai = analysisResultSchema.safeParse({
     category: "Food & dining",
     confidence: 0.91,
+    rationale: "The merchant is a campus food vendor.",
     insight: "This keeps food spending within the current plan.",
     action: "Use one campus meal this week.",
     source: "openai",

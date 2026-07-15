@@ -6,7 +6,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Pocket Semester | Student budget coach",
-  description: "A private student budget tracker with practical AI-powered spending guidance.",
+  description: "A student budget coach that shows whether your money will last through finals.",
+  metadataBase: new URL("https://pocket-semester.vercel.app"),
+  alternates: { canonical: "/" },
+  openGraph: { title: "Pocket Semester", description: "A student budget coach that shows whether your money will last through finals.", type: "website", url: "/" },
+  twitter: { card: "summary", title: "Pocket Semester", description: "A student budget coach that shows whether your money will last through finals." },
 };
 
 export default function RootLayout({

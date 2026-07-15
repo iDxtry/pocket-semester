@@ -1,14 +1,17 @@
 import { categories, type Category } from "@/lib/budget";
-import { toCents } from "@/lib/budget-math";
+import { isValidIsoDate, toCents } from "@/lib/budget-math";
 
 export type CsvColumnMapping = { merchant: string; description: string; amount: string; date: string; category: string };
 export type ParsedCsvExpense = { merchant: string; description: string; amountCents: number; occurredOn: string; category?: Category };
 
 export function normalizeCsvDate(value: string) {
   const trimmed = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  if (isValidIsoDate(trimmed)) return trimmed;
   const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (match) return `${match[3]}-${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}`;
+  if (match) {
+    const normalized = `${match[3]}-${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}`;
+    return isValidIsoDate(normalized) ? normalized : "";
+  }
   return "";
 }
 

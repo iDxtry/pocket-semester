@@ -37,10 +37,11 @@ function openaiModel() {
 const expenseOutputSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["category", "confidence", "insight", "action"],
+  required: ["category", "confidence", "rationale", "insight", "action"],
   properties: {
     category: { type: "string", enum: categories },
     confidence: { type: "number", minimum: 0, maximum: 1 },
+    rationale: { type: "string" },
     insight: { type: "string" },
     action: { type: "string" },
   },
@@ -94,6 +95,7 @@ export function getLocalExpenseAnalysis(input: AnalysisInput): ExpenseAnalysis {
   return {
     category,
     confidence: category === "Other" ? 0.58 : 0.88,
+    rationale: `The merchant or description matches Pocket Semester's ${category} rules.`,
     insight: `This expense puts you at ${percent}% of this month’s plan, with $${(remainingCents / 100).toFixed(0)} left.`,
     action:
       category === "Food & dining"
@@ -206,7 +208,7 @@ Expense:
 - Monthly budget: $${(input.monthlyBudgetCents / 100).toFixed(2)}
 
 Return only JSON matching this exact shape:
-{"category":"one of: ${categories.join(", ")}","confidence":0.0,"insight":"max 240 chars","action":"max 180 chars"}`;
+{"category":"one of: ${categories.join(", ")}","confidence":0.0,"rationale":"max 180 chars explaining the category","insight":"max 240 chars","action":"max 180 chars"}`;
 
   try {
     const resultSchema = { parse: (value: unknown) => analysisResultSchema.omit({ source: true, model: true }).parse(value) };

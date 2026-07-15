@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   await db
     .insert(profiles)
     .values({
-      clerkUserId: account.userId,
+      userId: account.userId,
       displayName: input.displayName,
       currency: input.currency,
       semesterStart: input.semesterStart,
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       onboardingComplete: true,
     })
     .onConflictDoUpdate({
-      target: profiles.clerkUserId,
+      target: profiles.userId,
       set: {
         displayName: input.displayName,
         currency: input.currency,

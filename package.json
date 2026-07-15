@@ -12,7 +12,6 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.5.17",
     "@neondatabase/serverless": "^1.1.0",
     "@phosphor-icons/react": "^2.1.10",
     "@types/papaparse": "^5.5.2",

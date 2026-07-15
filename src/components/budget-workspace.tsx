@@ -2,7 +2,6 @@
 
 import { FormEvent, KeyboardEvent, ReactNode, useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import { SignOutButton } from "@clerk/nextjs";
 import Papa from "papaparse";
 import {
   ArrowDownRight,
@@ -35,17 +34,19 @@ import {
 } from "@phosphor-icons/react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { categories, categoryColors, type BudgetTransaction, type Category, type CategoryBudget, type StudentGoal, type StudentProfile, type WorkspaceData } from "@/lib/budget";
-import { formatMoney, getBudgetSummary, getForecast, goalProgress, isoDateForMonthOffset, makeWeekSeries, monthLabel, monthShortLabel, toCents } from "@/lib/budget-math";
+import { formatMoney, getBudgetSummary, getForecast, getMonthState, goalProgress, isoDateForMonthOffset, makeWeekSeries, monthEnd, monthLabel, monthShortLabel, toCents, transactionsForMonth } from "@/lib/budget-math";
 import { parseMappedCsvRows, type ParsedCsvExpense } from "@/lib/csv";
 import type { AiSource, CoachPlan } from "@/lib/ai/types";
-import { routeForView, type WorkspaceView } from "@/lib/routes";
+import { resolveWorkspaceView, routeForView, type WorkspaceView } from "@/lib/routes";
+import { SignOutButton } from "@/components/sign-out-button";
+import { calculateSemesterRunway } from "@/lib/runway";
 
 type WorkspaceMode = "demo" | "account";
 type CategoryFilter = Category | "all";
 type ExpenseFormValues = { merchant: string; description: string; amountCents: number; occurredOn: string; category: Category | null };
 type CsvDraftRow = ParsedCsvExpense;
-type ExpenseAnalysisResponse = { category: Category; confidence: number; source: AiSource; model: string | null; insight: string; action: string };
-type CoachResponse = { plan: CoachPlan; source: Exclude<AiSource, "local">; model: string };
+type ExpenseAnalysisResponse = { category: Category; confidence: number; source: AiSource; model: string | null; rationale: string; insight: string; action: string };
+type CoachResponse = { plan: CoachPlan; source: "openai" | "gemini"; model: string };
 type CoachProvenance = { source: AiSource | "example"; model: string | null };
 type LatestCategorization = {
   transaction: BudgetTransaction;
@@ -63,6 +64,16 @@ const demoExampleCoachPlan: CoachPlan = {
   ],
   estimatedImpactCents: 3000,
 };
+
+function demoCoachPlanForMonth(month: string, state: ReturnType<typeof getMonthState>): CoachPlan {
+  if (state === "past") {
+    return { summary: `${monthLabel(month)} is closed. Use this recap to notice the category that moved most, then carry one small adjustment into the next month.`, watchouts: [{ category: "Food & dining", message: "Food stayed the most flexible category in this fictional month." }], actions: [{ title: "Review the biggest flexible category", detail: "Use the final category total to set one realistic change for the next month.", estimatedImpactCents: 1500 }, { title: "Keep the emergency cushion visible", detail: "Move a small amount after the month closes so the goal stays intentional.", estimatedImpactCents: 1000 }], estimatedImpactCents: 2500 };
+  }
+  if (state === "future") {
+    return { summary: `${monthLabel(month)} has not started. This is a planning preview, not an AI-generated forecast.`, watchouts: [{ category: "School", message: "Leave room for course materials and other start-of-month costs." }], actions: [{ title: "Add known fixed costs first", detail: "Start with housing, transit, and subscriptions before deciding on flexible spending.", estimatedImpactCents: 0 }, { title: "Set a weekly food cap", detail: "A small weekly limit makes the first two weeks easier to manage.", estimatedImpactCents: 0 }], estimatedImpactCents: 0 };
+  }
+  return demoExampleCoachPlan;
+}
 
 const navigation: Array<{ view: WorkspaceView; label: string; Icon: typeof House }> = [
   { view: "dashboard", label: "Overview", Icon: House },
@@ -95,6 +106,12 @@ function defaultDateForMonth(month: string) {
   return today.startsWith(month) ? today : `${month}-01`;
 }
 
+function confidenceLabel(confidence: number) {
+  if (confidence >= 0.85) return "High confidence";
+  if (confidence >= 0.7) return "Medium confidence";
+  return "Low confidence";
+}
+
 async function responseJson<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -114,12 +131,14 @@ export function BudgetWorkspace({
   initialView,
   initialData,
   initialCoachPlan = null,
+  initialCoachProvenance = null,
   initialCategory = "all",
 }: {
   mode: WorkspaceMode;
   initialView: WorkspaceView;
   initialData: WorkspaceData;
   initialCoachPlan?: CoachPlan | null;
+  initialCoachProvenance?: CoachProvenance | null;
   initialCategory?: CategoryFilter;
 }) {
   const [activeView, setActiveView] = useState(initialView);
@@ -132,32 +151,41 @@ export function BudgetWorkspace({
     name: "Emergency cushion", kind: "emergency", targetCents: 100000, currentCents: 0, targetDate: null,
   });
   const [coachPlan, setCoachPlan] = useState<CoachPlan | null>(() => initialCoachPlan ?? (mode === "demo" ? demoExampleCoachPlan : null));
-  const [coachProvenance, setCoachProvenance] = useState<CoachProvenance | null>(() => initialCoachPlan ? null : mode === "demo" ? { source: "example", model: null } : null);
+  const [coachProvenance, setCoachProvenance] = useState<CoachProvenance | null>(() => initialCoachProvenance ?? (initialCoachPlan ? null : mode === "demo" ? { source: "example", model: null } : null));
   const [coachState, setCoachState] = useState<"idle" | "loading">("idle");
   const [coachError, setCoachError] = useState("");
   const [notice, setNotice] = useState("");
   const [latestCategorization, setLatestCategorization] = useState<LatestCategorization | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const mobileMenuRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mobilePreviousFocusRef = useRef<HTMLElement | null>(null);
   const [showExpense, setShowExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<BudgetTransaction | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(initialCategory);
+  const [runwayFundsCents, setRunwayFundsCents] = useState(mode === "demo" ? 120_000 : Math.max(initialData.profile.monthlyAllowanceCents, 0));
+  const [runwayPurchaseCents, setRunwayPurchaseCents] = useState(mode === "demo" ? 26_000 : 0);
+  const [runwayActions, setRunwayActions] = useState<string[]>(mode === "demo" ? ["postpone-purchase", "food-cap"] : []);
   const month = initialData.month;
+  const monthTransactions = useMemo(() => transactionsForMonth(transactions, month), [transactions, month]);
 
-  const summary = useMemo(() => getBudgetSummary(transactions, budgets), [transactions, budgets]);
+  const summary = useMemo(() => getBudgetSummary(monthTransactions, budgets), [monthTransactions, budgets]);
   const fixedSpendCents = useMemo(
-    () => transactions
+    () => monthTransactions
       .filter((transaction) => transaction.category === "Housing" || transaction.category === "Subscriptions")
       .reduce((total, transaction) => total + transaction.amountCents, 0),
-    [transactions],
+    [monthTransactions],
   );
   const forecast = useMemo(() => getForecast(summary.totalSpentCents, month, undefined, fixedSpendCents), [summary.totalSpentCents, month, fixedSpendCents]);
+  const monthState = useMemo(() => getMonthState(month), [month]);
+  const runway = useMemo(() => calculateSemesterRunway({ month, profile, transactions: monthTransactions, budgets, availableFundsCents: runwayFundsCents, plannedPurchaseCents: runwayPurchaseCents, selectedActionIds: runwayActions }), [month, profile, monthTransactions, budgets, runwayFundsCents, runwayPurchaseCents, runwayActions]);
   const goalSummary = useMemo(() => goalProgress(goal), [goal]);
-  const weekSeries = useMemo(() => makeWeekSeries(transactions, month), [transactions, month]);
+  const weekSeries = useMemo(() => makeWeekSeries(monthTransactions, month), [monthTransactions, month]);
   const filteredTransactions = useMemo(
-    () => sortTransactions(categoryFilter === "all" ? transactions : transactions.filter((transaction) => transaction.category === categoryFilter)),
-    [categoryFilter, transactions],
+    () => sortTransactions(categoryFilter === "all" ? monthTransactions : monthTransactions.filter((transaction) => transaction.category === categoryFilter)),
+    [categoryFilter, monthTransactions],
   );
   const forecastDifference = summary.totalBudgetCents - forecast.forecastCents;
 
@@ -168,6 +196,60 @@ export function BudgetWorkspace({
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
+
+  useEffect(() => {
+    if (mode !== "demo") return;
+
+    function syncDemoUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const category = params.get("category");
+      setActiveView(resolveWorkspaceView(params.get("view")));
+      setCategoryFilter(categories.includes(category as Category) ? (category as Category) : "all");
+      setMobileOpen(false);
+    }
+
+    window.addEventListener("popstate", syncDemoUrl);
+    return () => window.removeEventListener("popstate", syncDemoUrl);
+  }, [mode]);
+
+  useEffect(() => {
+    if (!isMobileLayout || !mobileOpen) return;
+
+    mobilePreviousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : mobileMenuRef.current;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const firstFocusable = sidebarRef.current?.querySelector<HTMLElement>("a[href], button:not([disabled]), [tabindex]:not([tabindex=\"-1\"])");
+    const focusIntoDrawer = window.requestAnimationFrame(() => firstFocusable?.focus());
+
+    function handleDrawerKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !sidebarRef.current) return;
+      const focusable = Array.from(sidebarRef.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), [tabindex]:not([tabindex=\"-1\"])")).filter((element) => !element.hasAttribute("inert") && element.getAttribute("aria-hidden") !== "true");
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleDrawerKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusIntoDrawer);
+      document.removeEventListener("keydown", handleDrawerKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+      const previousFocus = mobilePreviousFocusRef.current;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [isMobileLayout, mobileOpen]);
 
   function openExpense(transaction: BudgetTransaction | null = null) {
     setEditingExpense(transaction);
@@ -272,7 +354,7 @@ export function BudgetWorkspace({
       savedTransaction = body.transaction;
     }
 
-    if (analysis && savedTransaction) {
+    if (analysis && savedTransaction && savedTransaction.occurredOn.startsWith(month)) {
       const categoryHealth = summary.categoryHealth.find((item) => item.category === savedTransaction.category);
       setLatestCategorization({
         transaction: savedTransaction,
@@ -321,7 +403,8 @@ export function BudgetWorkspace({
         });
       }
       setTransactions((items) => sortTransactions([...added, ...items]));
-      setNotice(`${added.length} CSV expenses imported${skipped ? `, ${skipped} duplicates skipped` : ""}.`);
+      const outsideMonth = added.filter((transaction) => !transaction.occurredOn.startsWith(month)).length;
+      setNotice(`${added.length} CSV expenses imported${skipped ? `, ${skipped} duplicates skipped` : ""}${outsideMonth ? `; ${outsideMonth} belong to other months` : ""}.`);
       return;
     }
 
@@ -332,7 +415,8 @@ export function BudgetWorkspace({
     });
     const body = await responseJson<{ imported: BudgetTransaction[]; skipped: number }>(response);
     setTransactions((items) => sortTransactions([...body.imported, ...items]));
-    setNotice(`${body.imported.length} CSV expenses imported${body.skipped ? `, ${body.skipped} duplicates skipped` : ""}.`);
+    const outsideMonth = body.imported.filter((transaction) => !transaction.occurredOn.startsWith(month)).length;
+    setNotice(`${body.imported.length} CSV expenses imported${body.skipped ? `, ${body.skipped} duplicates skipped` : ""}${outsideMonth ? `; ${outsideMonth} belong to other months` : ""}.`);
   }
 
   async function saveBudgets(event: FormEvent<HTMLFormElement>) {
@@ -372,6 +456,10 @@ export function BudgetWorkspace({
   }
 
   async function refreshCoach() {
+    if (monthState !== "current") {
+      setCoachError(monthState === "past" ? "Completed months use a recap instead of a live coach refresh." : "The coach can refresh once this month begins.");
+      return;
+    }
     setCoachState("loading");
     setCoachError("");
     const coachContext = {
@@ -421,18 +509,19 @@ export function BudgetWorkspace({
       window.location.assign("/demo");
       return;
     }
-    if (!window.confirm("Delete all Pocket Semester transactions, budgets, goals, rules, and coach plans? Your Clerk account will remain.")) return;
+    if (!window.confirm("Delete all Pocket Semester transactions, budgets, goals, rules, and coach plans? Your sign-in account will remain.")) return;
     const response = await fetch("/api/profile", { method: "DELETE" });
     await responseJson(response);
     window.location.assign("/");
   }
 
   const title = viewTitles[activeView];
+  const visibleCoachPlan = mode === "demo" && coachProvenance?.source === "example" ? demoCoachPlanForMonth(month, monthState) : coachPlan;
   return (
     <div className="app-shell">
       <a className="skip-link" href="#workspace-main">Skip to workspace</a>
       {mobileOpen && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
-      <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`} aria-label="Primary navigation" aria-hidden={isMobileLayout && !mobileOpen ? true : undefined} inert={isMobileLayout && !mobileOpen ? true : undefined}>
+      <aside ref={sidebarRef} className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`} role={isMobileLayout && mobileOpen ? "dialog" : undefined} aria-modal={isMobileLayout && mobileOpen ? true : undefined} aria-label="Primary navigation" aria-hidden={isMobileLayout && !mobileOpen ? true : undefined} inert={isMobileLayout && !mobileOpen ? true : undefined}>
         <Link className="brand" href={mode === "demo" ? "/demo" : "/dashboard"}>
           <span className="brand-mark"><Wallet weight="fill" /></span><span>Pocket Semester</span>
         </Link>
@@ -449,21 +538,21 @@ export function BudgetWorkspace({
         ) : (
           <div className="account-footer">
             <Link className="student-profile" href={routeHref(mode, "settings", month)}><span className="avatar">{profile.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{profile.displayName}</strong><small>Student plan</small></span></Link>
-            <SignOutButton redirectUrl="/"><button className="sidebar-signout" type="button"><SignOut /> Sign out</button></SignOutButton>
+            <SignOutButton><><SignOut /> Sign out</></SignOutButton>
           </div>
         )}
       </aside>
 
       <main className="dashboard" id="workspace-main" tabIndex={-1}>
         <header className="topbar">
-          <button className="mobile-menu" aria-label="Open navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><List /></button>
+          <button ref={mobileMenuRef} className="mobile-menu" aria-label="Open navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><List /></button>
           <div><p className="date-label">{title.eyebrow} · {monthLabel(month)}</p><h1>{title.heading}</h1><div className="mobile-month-controls" aria-label="Selected month"><button className="month-button" onClick={() => moveMonth(-1)} aria-label="Previous month"><CaretLeft /></button><span className="month-value"><CalendarBlank /> {monthShortLabel(month)}</span><button className="month-button" onClick={() => moveMonth(1)} aria-label="Next month"><CaretRight /></button></div></div>
           <div className="top-actions"><button className="month-button" onClick={() => moveMonth(-1)} aria-label="Previous month"><CaretLeft /></button><span className="month-value"><CalendarBlank /> {monthShortLabel(month)}</span><button className="month-button" onClick={() => moveMonth(1)} aria-label="Next month"><CaretRight /></button><button className="secondary-button top-import" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button top-add" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div>
         </header>
 
         {notice && <p className="sr-status" role="status">{notice}</p>}
         {latestCategorization && <LatestCategorizationCard value={latestCategorization} currency={profile.currency} onDismiss={() => setLatestCategorization(null)} onChangeCategory={() => openExpense(latestCategorization.transaction)} />}
-        {activeView === "dashboard" && <><div className="mobile-action-dock" aria-label="Quick actions"><button className="secondary-button" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div><DashboardView summary={summary} forecast={forecast} fixedSpendCents={fixedSpendCents} forecastDifference={forecastDifference} goal={goalSummary} profile={profile} transactions={transactions} weekSeries={weekSeries} coachPlan={coachPlan} coachProvenance={coachProvenance} coachState={coachState} coachError={coachError} isDemo={mode === "demo"} hasCategorization={Boolean(latestCategorization)} onAddExpense={() => openExpense()} onRefreshCoach={refreshCoach} onOpenTransactions={() => mode === "demo" ? activateDemoView("transactions") : window.location.assign(routeHref(mode, "transactions", month))} onDrilldown={drillIntoCategory} /></>}
+        {activeView === "dashboard" && <><div className="mobile-action-dock" aria-label="Quick actions"><button className="secondary-button" onClick={() => setShowImport(true)}><UploadSimple /> Import CSV</button><button className="primary-button" onClick={() => openExpense()}><Plus weight="bold" /> Add expense</button></div><DashboardView summary={summary} forecast={forecast} fixedSpendCents={fixedSpendCents} forecastDifference={forecastDifference} goal={goalSummary} profile={profile} transactions={monthTransactions} monthState={monthState} weekSeries={weekSeries} runway={runway} runwayFundsCents={runwayFundsCents} runwayPurchaseCents={runwayPurchaseCents} runwayActions={runwayActions} coachPlan={visibleCoachPlan} coachProvenance={coachProvenance} coachState={coachState} coachError={coachError} isDemo={mode === "demo"} hasCategorization={Boolean(latestCategorization)} onAddExpense={() => openExpense()} onRefreshCoach={refreshCoach} onFundsChange={setRunwayFundsCents} onPurchaseChange={setRunwayPurchaseCents} onActionsChange={setRunwayActions} onOpenTransactions={() => mode === "demo" ? activateDemoView("transactions") : window.location.assign(routeHref(mode, "transactions", month))} onDrilldown={drillIntoCategory} /></>}
         {activeView === "transactions" && <TransactionsView transactions={filteredTransactions} filter={categoryFilter} onFilter={setCategoryFilter} profile={profile} onAdd={() => openExpense()} onImport={() => setShowImport(true)} onEdit={openExpense} onDelete={deleteExpense} />}
         {activeView === "budgets" && <BudgetsView budgetDraft={budgetDraft} summary={summary} profile={profile} onChange={(category, amountCents) => setBudgetDraft((items) => items.map((item) => item.category === category ? { ...item, limitCents: amountCents } : item))} onSubmit={saveBudgets} />}
         {activeView === "goals" && <GoalsView goal={goalDraft} goalSummary={goalSummary} profile={profile} onChange={setGoalDraft} onSubmit={saveGoal} />}
@@ -477,19 +566,21 @@ export function BudgetWorkspace({
   );
 }
 
-function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference, goal, profile, transactions, weekSeries, coachPlan, coachProvenance, coachState, coachError, isDemo, hasCategorization, onAddExpense, onRefreshCoach, onOpenTransactions, onDrilldown }: {
-  summary: ReturnType<typeof getBudgetSummary>; forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; forecastDifference: number; goal: ReturnType<typeof goalProgress>; profile: StudentProfile; transactions: BudgetTransaction[]; weekSeries: ReturnType<typeof makeWeekSeries>; coachPlan: CoachPlan | null; coachProvenance: CoachProvenance | null; coachState: "idle" | "loading"; coachError: string; isDemo: boolean; hasCategorization: boolean; onAddExpense: () => void; onRefreshCoach: () => void; onOpenTransactions: () => void; onDrilldown: (category: Category) => void;
+function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference, goal, profile, transactions, monthState, weekSeries, runway, runwayFundsCents, runwayPurchaseCents, runwayActions, coachPlan, coachProvenance, coachState, coachError, isDemo, hasCategorization, onAddExpense, onRefreshCoach, onFundsChange, onPurchaseChange, onActionsChange, onOpenTransactions, onDrilldown }: {
+  summary: ReturnType<typeof getBudgetSummary>; forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; forecastDifference: number; goal: ReturnType<typeof goalProgress>; profile: StudentProfile; transactions: BudgetTransaction[]; monthState: ReturnType<typeof getMonthState>; weekSeries: ReturnType<typeof makeWeekSeries>; runway: ReturnType<typeof calculateSemesterRunway>; runwayFundsCents: number; runwayPurchaseCents: number; runwayActions: string[]; coachPlan: CoachPlan | null; coachProvenance: CoachProvenance | null; coachState: "idle" | "loading"; coachError: string; isDemo: boolean; hasCategorization: boolean; onAddExpense: () => void; onRefreshCoach: () => void; onFundsChange: (cents: number) => void; onPurchaseChange: (cents: number) => void; onActionsChange: (ids: string[]) => void; onOpenTransactions: () => void; onDrilldown: (category: Category) => void;
 }) {
+  const forecastTitle = monthState === "past" ? "Final month total" : monthState === "future" ? "Planned month estimate" : "End-of-month forecast";
   return <>
     <section className="metrics" aria-label="Budget summary">
-      <article className="metric primary-metric"><div className="metric-heading"><span>Available this month</span><Wallet /></div><strong>{formatMoney(summary.availableCents, profile.currency)}</strong><p><ArrowUpRight weight="bold" /> {summary.percentUsed}% of your plan used</p><div className="budget-track" aria-label={`${summary.percentUsed}% of budget used`}><span style={{ width: `${Math.min(summary.percentUsed, 100)}%` }} /></div></article>
-      <article className="metric"><div className="metric-heading"><span>End-of-month forecast</span><CurrencyDollar /></div><strong>{formatMoney(forecast.forecastCents, profile.currency)}</strong><p className={forecastDifference >= 0 ? "positive" : "negative"}>{forecastDifference >= 0 ? <ArrowDownRight weight="bold" /> : <ArrowUpRight weight="bold" />}{forecastDifference >= 0 ? `${formatMoney(forecastDifference, profile.currency)} below your plan` : `${formatMoney(Math.abs(forecastDifference), profile.currency)} above your plan`}</p></article>
+      <article className="metric primary-metric"><div className="metric-heading"><span>Plan remaining</span><Wallet /></div><strong>{formatMoney(summary.availableCents, profile.currency)}</strong><p><ArrowUpRight weight="bold" /> {summary.percentUsed}% of plan used · {formatMoney(Math.max(profile.monthlyAllowanceCents - summary.totalBudgetCents, 0), profile.currency)} buffer</p><div className="budget-track" aria-label={`${summary.percentUsed}% of budget used`}><span style={{ width: `${Math.min(summary.percentUsed, 100)}%` }} /></div></article>
+      <article className="metric"><div className="metric-heading"><span>{forecastTitle}</span><CurrencyDollar /></div><strong>{monthState === "future" ? formatMoney(summary.totalBudgetCents, profile.currency) : formatMoney(forecast.forecastCents, profile.currency)}</strong><p className={forecastDifference >= 0 ? "positive" : "negative"}>{monthState === "past" ? "Month closed" : monthState === "future" ? "No expenses recorded yet" : forecastDifference >= 0 ? <><ArrowDownRight weight="bold" /> {formatMoney(forecastDifference, profile.currency)} below your plan</> : <><ArrowUpRight weight="bold" /> {formatMoney(Math.abs(forecastDifference), profile.currency)} above your plan</>}</p></article>
       <article className="metric"><div className="metric-heading"><span>{goal?.name ?? "Savings goal"}</span><Target /></div><strong>{goal ? formatMoney(goal.currentCents, profile.currency) : "Set a goal"}{goal && <small> of {formatMoney(goal.targetCents, profile.currency)}</small>}</strong><p>{goal ? `${goal.percent}% funded with ${formatMoney(goal.remainingCents, profile.currency)} left to save` : "Add a goal to keep your cushion visible."}</p></article>
     </section>
-    {isDemo && <DemoChecklist hasCategorization={hasCategorization} hasRefreshedPlan={coachProvenance?.source !== "example"} onAddExpense={onAddExpense} onRefreshPlan={onRefreshCoach} />}
-    <ForecastExplainer forecast={forecast} fixedSpendCents={fixedSpendCents} currency={profile.currency} />
+    {isDemo && <DemoChecklist hasCategorization={hasCategorization} hasRefreshedPlan={coachProvenance?.source !== "example"} hasRunway={runwayActions.length > 0} onAddExpense={onAddExpense} onRefreshPlan={onRefreshCoach} />}
+    <ForecastExplainer forecast={forecast} fixedSpendCents={fixedSpendCents} currency={profile.currency} state={monthState} />
+    <RunwayPanel state={monthState} runway={runway} currency={profile.currency} availableFundsCents={runwayFundsCents} plannedPurchaseCents={runwayPurchaseCents} selectedActionIds={runwayActions} onFundsChange={onFundsChange} onPurchaseChange={onPurchaseChange} onActionsChange={onActionsChange} />
     <section className="main-grid">
-      <article className="panel spending-panel"><div className="panel-heading"><div><h2>Weekly spending</h2><p>Daily expenses in the selected month.</p></div><span className="trend-tag"><CalendarBlank weight="bold" /> {forecast.daysRemaining} days left</span></div><div className="chart-wrap" aria-label="Weekly spending area chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={weekSeries} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}><defs><linearGradient id="spendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity={0.32} /><stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 5" /><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "var(--muted)", fontSize: 12 }} /><Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12 }} formatter={(value) => [`$${value}`, "Spent"]} /><Area type="monotone" dataKey="amount" stroke="var(--accent)" strokeWidth={2.5} fill="url(#spendFill)" /></AreaChart></ResponsiveContainer></div></article>
+      <article className="panel spending-panel"><div className="panel-heading"><div><h2>Weekly spending</h2><p>{monthState === "future" ? "This month has not started yet." : "Daily expenses in the selected month."}</p></div><span className="trend-tag"><CalendarBlank weight="bold" /> {monthState === "current" ? `${forecast.daysRemaining} days left` : monthState === "past" ? "Month closed" : "Planning view"}</span></div><div className="chart-wrap" aria-label={`Weekly spending: ${weekSeries.map((point) => `${point.day} $${point.amount}`).join(", ")}`}><ResponsiveContainer width="100%" height="100%"><AreaChart data={weekSeries} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}><defs><linearGradient id="spendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity={0.32} /><stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 5" /><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "var(--muted)", fontSize: 12 }} /><Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12 }} formatter={(value) => [`$${value}`, "Spent"]} /><Area type="monotone" dataKey="amount" stroke="var(--accent)" strokeWidth={2.5} fill="url(#spendFill)" /></AreaChart></ResponsiveContainer></div></article>
       <CoachCard coachPlan={coachPlan} provenance={coachProvenance} state={coachState} error={coachError} currency={profile.currency} onRefresh={onRefreshCoach} compact />
     </section>
     <section className="lower-grid">
@@ -499,20 +590,31 @@ function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference,
   </>;
 }
 
-function DemoChecklist({ hasCategorization, hasRefreshedPlan, onAddExpense, onRefreshPlan }: { hasCategorization: boolean; hasRefreshedPlan: boolean; onAddExpense: () => void; onRefreshPlan: () => void }) {
-  return <section className="demo-progress" aria-label="60-second demo path"><div className="demo-progress-heading"><span>60-second demo</span><p>Fictional data · resets on reload</p></div><ol><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "1"}</span><strong>Add an expense</strong><button className="text-button" onClick={onAddExpense}>Try it <ArrowRight /></button></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "2"}</span><strong>See category and forecast</strong></li><li className={hasRefreshedPlan ? "complete" : ""}><span>{hasRefreshedPlan ? <CheckCircle weight="fill" /> : "3"}</span><strong>Refresh the plan</strong><button className="text-button" onClick={onRefreshPlan}>Refresh <ArrowRight /></button></li></ol></section>;
+function DemoChecklist({ hasCategorization, hasRefreshedPlan, hasRunway, onAddExpense, onRefreshPlan }: { hasCategorization: boolean; hasRefreshedPlan: boolean; hasRunway: boolean; onAddExpense: () => void; onRefreshPlan: () => void }) {
+  return <section className="demo-progress" aria-label="60-second demo path"><div className="demo-progress-heading"><span>60-second demo</span><p>Fictional data · resets on reload</p></div><ol><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "1"}</span><strong>Add an expense</strong><button className="text-button" onClick={onAddExpense}>Try it <ArrowRight /></button></li><li className={hasRunway ? "complete" : ""}><span>{hasRunway ? <CheckCircle weight="fill" /> : "2"}</span><strong>Check your runway</strong></li><li className={hasRefreshedPlan ? "complete" : ""}><span>{hasRefreshedPlan ? <CheckCircle weight="fill" /> : "3"}</span><strong>Refresh the plan</strong><button className="text-button" onClick={onRefreshPlan}>Refresh <ArrowRight /></button></li></ol></section>;
 }
 
-function ForecastExplainer({ forecast, fixedSpendCents, currency }: { forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; currency: string }) {
-  return <section className="forecast-explainer" aria-label="How the month-end forecast works"><div><p className="eyebrow">Forecast</p><h2>Where this month is headed.</h2><p>Housing and subscriptions are fixed. Everything else follows the flexible pace you have set so far.</p></div><dl><div><dt>Fixed spending</dt><dd>{formatMoney(fixedSpendCents, currency)}</dd></div><div><dt>Flexible daily pace</dt><dd>{formatMoney(forecast.flexibleDailyPaceCents, currency)}</dd></div><div><dt>Projected month end</dt><dd>{formatMoney(forecast.forecastCents, currency)}</dd></div><div><dt>Days left</dt><dd>{forecast.daysRemaining}</dd></div></dl></section>;
+function ForecastExplainer({ forecast, fixedSpendCents, currency, state }: { forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; currency: string; state: ReturnType<typeof getMonthState> }) {
+  const copy = state === "past" ? "This month is complete, so Pocket Semester shows final spending instead of predicting the rest of it." : state === "future" ? "This month has not started. The plan is visible, but there is no real spending pace or live AI forecast yet." : "Housing and subscriptions are fixed. Everything else follows the flexible pace you have set so far.";
+  return <section className="forecast-explainer" aria-label="How the month-end forecast works"><div><p className="eyebrow">Forecast</p><h2>{state === "past" ? "What this month actually cost." : state === "future" ? "What this plan sets aside." : "Where this month is headed."}</h2><p>{copy}</p></div><dl><div><dt>Fixed spending</dt><dd>{formatMoney(fixedSpendCents, currency)}</dd></div><div><dt>Flexible daily pace</dt><dd>{state === "current" ? formatMoney(forecast.flexibleDailyPaceCents, currency) : "—"}</dd></div><div><dt>{state === "past" ? "Final month total" : "Projected month end"}</dt><dd>{formatMoney(forecast.forecastCents, currency)}</dd></div><div><dt>{state === "current" ? "Days left" : "Month status"}</dt><dd>{state === "current" ? forecast.daysRemaining : state === "past" ? "Closed" : "Not started"}</dd></div></dl></section>;
+}
+
+function RunwayPanel({ state, runway, currency, availableFundsCents, plannedPurchaseCents, selectedActionIds, onFundsChange, onPurchaseChange, onActionsChange }: { state: ReturnType<typeof getMonthState>; runway: ReturnType<typeof calculateSemesterRunway>; currency: string; availableFundsCents: number; plannedPurchaseCents: number; selectedActionIds: string[]; onFundsChange: (cents: number) => void; onPurchaseChange: (cents: number) => void; onActionsChange: (ids: string[]) => void }) {
+  if (state !== "current") return <section className="runway-panel runway-unavailable"><div><p className="eyebrow">Semester runway</p><h2>{state === "past" ? "Runway checks are for active months." : "Your runway starts when this month does."}</h2><p>{state === "past" ? "Choose the current month to test a purchase against the rest of your term." : "Set your expected income and expenses once the month begins."}</p></div></section>;
+  const covered = runway.status === "covered";
+  const displayDate = runway.coveredThrough ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${runway.coveredThrough}T12:00:00Z`)) : "—";
+  function toggleAction(id: string) {
+    onActionsChange(selectedActionIds.includes(id) ? selectedActionIds.filter((item) => item !== id) : [...selectedActionIds, id]);
+  }
+  return <section className="runway-panel" aria-label="Semester runway scenario"><div className="runway-heading"><div><p className="eyebrow">Semester runway</p><h2>{covered ? `Covered through finals · ${displayDate}` : `Funds run out after ${displayDate}`}</h2><p>Calculated from your current pace, category plan, planned purchase, and days through finals. This is a planning estimate, not financial advice.</p></div><div className={`runway-result ${covered ? "covered" : "shortfall"}`}><span>{covered ? "Finals buffer" : "Projected shortfall"}</span><strong>{formatMoney(covered ? runway.finalBufferCents : runway.shortfallCents, currency)}</strong></div></div><div className="runway-grid"><label>Funds available through finals<input aria-label="Funds available through finals" type="number" min="0" step="1" value={String(availableFundsCents / 100)} onChange={(event) => onFundsChange(toCents(Number(event.target.value) || 0))} /></label><label>Planned purchase<input aria-label="Planned purchase" type="number" min="0" step="1" value={String(plannedPurchaseCents / 100)} onChange={(event) => onPurchaseChange(toCents(Number(event.target.value) || 0))} /></label><span><small>Need through finals</small><strong>{formatMoney(runway.projectedNeedCents, currency)}</strong></span><span><small>Days to finals</small><strong>{runway.daysToFinals}</strong></span></div><div className="runway-actions"><p><strong>Try a tradeoff</strong><span>Each impact is calculated before the coach explains it.</span></p>{runway.actions.map((action) => <label key={action.id} className={selectedActionIds.includes(action.id) ? "selected" : ""}><input type="checkbox" checked={selectedActionIds.includes(action.id)} onChange={() => toggleAction(action.id)} /><span><strong>{action.title}</strong><small>{action.detail}</small></span><b>+{formatMoney(action.impactCents, currency)}</b></label>)}</div></section>;
 }
 
 function LatestCategorizationCard({ value, currency, onDismiss, onChangeCategory }: { value: LatestCategorization; currency: string; onDismiss: () => void; onChangeCategory: () => void }) {
   const { analysis, transaction, projectedCategorySpentCents, categoryLimitCents } = value;
   const localResult = analysis.source === "local";
-  const provenance = analysis.source === "openai" ? `Categorized by ${analysis.model}` : analysis.source === "gemini" ? `Development AI · ${analysis.model}` : "Quick local category";
+  const provenance = analysis.source === "openai" ? `Categorized by ${analysis.model}` : analysis.source === "gemini" ? `Runtime AI · ${analysis.model}` : analysis.source === "merchant-rule" ? "Your saved category rule" : "Quick local category";
   const budgetEffect = categoryLimitCents > 0 ? `${formatMoney(projectedCategorySpentCents, currency)} of ${formatMoney(categoryLimitCents, currency)}` : "No category limit set";
-  return <section className="categorization-card" aria-label="Latest expense categorization"><div className="categorization-card-heading"><div><span className="ai-label">{provenance}</span><h2>{transaction.merchant} is in {analysis.category}</h2><p>{localResult ? "This is a local rule-based suggestion, not a live AI response." : `${Math.round(analysis.confidence * 100)}% confidence · ${analysis.insight}`}</p></div><button className="icon-button quiet" onClick={onDismiss} aria-label="Dismiss latest categorization"><X /></button></div><div className="categorization-details"><div><small>Why</small><strong>{analysis.action}</strong></div><div><small>Category total after this expense</small><strong>{budgetEffect}</strong></div></div><div className="categorization-actions"><button className="secondary-button" onClick={onChangeCategory}><PencilSimple /> Change category</button><button className="text-button" onClick={onDismiss}>Keep it <CheckCircle weight="bold" /></button></div></section>;
+  return <section className="categorization-card" aria-label="Latest expense categorization"><div className="categorization-card-heading"><div><span className="ai-label">{provenance}</span><h2>{transaction.merchant} is in {analysis.category}</h2><p>{localResult ? "This is a local rule-based suggestion, not a live AI response." : `${confidenceLabel(analysis.confidence)} · ${analysis.insight}`}</p></div><button className="icon-button quiet" onClick={onDismiss} aria-label="Dismiss latest categorization"><X /></button></div><div className="categorization-details"><div><small>Category rationale</small><strong>{analysis.rationale}</strong></div><div><small>Category total after this expense</small><strong>{budgetEffect}</strong></div><div><small>Suggested next step</small><strong>{analysis.action}</strong></div></div><div className="categorization-actions"><button className="secondary-button" onClick={onChangeCategory}><PencilSimple /> Change category</button><button className="text-button" onClick={onDismiss}>Keep it <CheckCircle weight="bold" /></button></div></section>;
 }
 
 function TransactionRow({ transaction, currency, actions }: { transaction: BudgetTransaction; currency: string; actions?: ReactNode }) {
@@ -594,7 +696,7 @@ function ExpenseModal({ editing, month, onClose, onSubmit }: { editing: BudgetTr
     } catch (submissionError) { setError(submissionError instanceof Error ? submissionError.message : "Could not save this expense."); }
     finally { setState("idle"); }
   }
-  return <Modal title={editing ? "Edit expense" : "Add an expense"} onClose={onClose}><div className="modal-heading"><div><h2>{editing ? "Edit expense" : "Add an expense"}</h2><p>{editing ? "Correct the details or category. Your preference will help future entries." : "Leave category on auto to get an AI-assisted suggestion."}</p></div><button className="icon-button" onClick={onClose} aria-label="Close"><X /></button></div><form onSubmit={submit} className="modal-form"><label>Merchant<input value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={80} placeholder="Campus Market" /></label><label>Description<input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={180} placeholder="Groceries and snacks" /></label><div className="form-grid two"><label>Amount<span className="currency-field"><b>$</b><input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0.01" max="100000" step="0.01" required placeholder="0.00" /></span></label><label>Date<input value={occurredOn} onChange={(event) => setOccurredOn(event.target.value)} type="date" required /></label></div><label>Category<select value={category} onChange={(event) => setCategory(event.target.value as Category | "auto")}>{!editing && <option value="auto">Auto categorize</option>}{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button wide" disabled={state === "saving"}>{state === "saving" ? "Saving expense" : <><Sparkle weight="fill" /> {editing ? "Save changes" : "Categorize and add"}</>}</button></form></Modal>;
+  return <Modal title={editing ? "Edit expense" : "Add an expense"} onClose={onClose}><div className="modal-heading"><div><h2>{editing ? "Edit expense" : "Add an expense"}</h2><p>{editing ? "Correct the details or category. Your preference will help future entries." : "Leave category on auto to get an AI-assisted suggestion."}</p></div><button className="icon-button" onClick={onClose} aria-label="Close"><X /></button></div><form onSubmit={submit} className="modal-form"><label>Merchant<input value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={80} placeholder="Campus Market" /></label><label>Description<input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={180} placeholder="Groceries and snacks" /></label><div className="form-grid two"><label>Amount<span className="currency-field"><b>$</b><input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0.01" max="100000" step="0.01" required placeholder="0.00" /></span></label><label>Date<input value={occurredOn} onChange={(event) => setOccurredOn(event.target.value)} min={`${month}-01`} max={monthEnd(month)} type="date" required /></label></div><label>Category<select value={category} onChange={(event) => setCategory(event.target.value as Category | "auto")}>{!editing && <option value="auto">Auto categorize</option>}{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button wide" disabled={state === "saving"}>{state === "saving" ? "Saving expense" : <><Sparkle weight="fill" /> {editing ? "Save changes" : "Categorize and add"}</>}</button></form></Modal>;
 }
 
 function guessHeader(headers: string[], terms: string[]) {
