@@ -131,9 +131,49 @@ function demoExpenseAmount(amountCents: number, category: Category, month: strin
   return Math.max(350, Math.round((amountCents * demoMonthMultiplier(demoExpenseMultipliers, category, month)) / 10) * 10);
 }
 
-export function createDemoWorkspace(month = "2026-07"): WorkspaceData {
+export function createDemoWorkspace(month = "2026-07", asOf = new Date()): WorkspaceData {
   const term = demoTermForMonth(month);
   const date = (day: number) => demoDayForMonth(month, term, day);
+  const today = asOf.toISOString().slice(0, 10);
+  const currentMonth = today.slice(0, 7);
+  const isFuture = month > currentMonth;
+  const isCurrent = month === currentMonth;
+  const goalBalanceByMonth = [31200, 34800, 39100, 43100, 45200, 43800, 46500, 50100, 46800, 51200, 54600, 58400];
+  const transactions: BudgetTransaction[] = [
+    {
+      id: "demo-tx-1", merchant: "Campus Apartments", description: "Residence payment", amountCents: demoExpenseAmount(89500, "Housing", month), category: "Housing", occurredOn: date(1), confidence: 0.99, source: "demo",
+    },
+    {
+      id: "demo-tx-2", merchant: "Neighborhood Market", description: "Groceries for the week", amountCents: demoExpenseAmount(5874, "Food & dining", month), category: "Food & dining", occurredOn: date(2), confidence: 0.97, source: "demo",
+    },
+    {
+      id: "demo-tx-3", merchant: "City Bus", description: "Monthly student transit pass", amountCents: demoExpenseAmount(3125, "Transport", month), category: "Transport", occurredOn: date(3), confidence: 0.99, source: "demo",
+    },
+    {
+      id: "demo-tx-4", merchant: "Campus Print & Supply", description: "Lab print credits and notebook", amountCents: demoExpenseAmount(2840, "School", month), category: "School", occurredOn: date(5), confidence: 0.96, source: "demo",
+    },
+    {
+      id: "demo-tx-5", merchant: "Streamly", description: "Music subscription", amountCents: demoExpenseAmount(1099, "Subscriptions", month), category: "Subscriptions", occurredOn: date(6), confidence: 0.94, source: "demo",
+    },
+    {
+      id: "demo-tx-6", merchant: "Campus Cafe", description: "Coffee before afternoon lab", amountCents: demoExpenseAmount(725, "Food & dining", month), category: "Food & dining", occurredOn: date(8), confidence: 0.93, source: "demo",
+    },
+    {
+      id: "demo-tx-7", merchant: "Laundry Card", description: "Laundry room reload", amountCents: demoExpenseAmount(1400, "Other", month), category: "Other", occurredOn: date(9), confidence: 0.98, source: "demo",
+    },
+    {
+      id: "demo-tx-8", merchant: "Green Bowl", description: "Dinner after campus shift", amountCents: demoExpenseAmount(1860, "Food & dining", month), category: "Food & dining", occurredOn: date(10), confidence: 0.95, source: "demo",
+    },
+    {
+      id: "demo-tx-9", merchant: month.slice(5) === "10" ? "Student Football" : "Student Cinema", description: month.slice(5) === "10" ? "Home game ticket" : "Movie night ticket", amountCents: demoExpenseAmount(1650, "Fun", month), category: "Fun", occurredOn: date(11), confidence: 0.93, source: "demo",
+    },
+    {
+      id: "demo-tx-10", merchant: "Corner Grocer", description: "Produce and breakfast staples", amountCents: demoExpenseAmount(4620, "Food & dining", month), category: "Food & dining", occurredOn: date(12), confidence: 0.96, source: "demo",
+    },
+    {
+      id: "demo-tx-11", merchant: "Campus Pharmacy", description: "Cold medicine and toiletries", amountCents: demoExpenseAmount(968, "Other", month), category: "Other", occurredOn: date(13), confidence: 0.95, source: "demo",
+    },
+  ];
   return {
     profile: {
       displayName: "Alex Rivera",
@@ -151,120 +191,9 @@ export function createDemoWorkspace(month = "2026-07"): WorkspaceData {
       name: "Emergency cushion",
       kind: "emergency",
       targetCents: 75000,
-      currentCents: 46500,
+      currentCents: goalBalanceByMonth[Number(month.slice(5, 7)) - 1] ?? 46500,
       targetDate: term.end,
     },
-    transactions: [
-      {
-        id: "demo-tx-1",
-        merchant: "Campus Apartments",
-        description: "Residence payment",
-        amountCents: demoExpenseAmount(89500, "Housing", month),
-        category: "Housing",
-        occurredOn: date(1),
-        confidence: 0.99,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-2",
-        merchant: "Neighborhood Market",
-        description: "Groceries for the week",
-        amountCents: demoExpenseAmount(5874, "Food & dining", month),
-        category: "Food & dining",
-        occurredOn: date(2),
-        confidence: 0.97,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-3",
-        merchant: "City Bus",
-        description: "Monthly student transit pass",
-        amountCents: demoExpenseAmount(3125, "Transport", month),
-        category: "Transport",
-        occurredOn: date(3),
-        confidence: 0.99,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-4",
-        merchant: "Campus Print & Supply",
-        description: "Lab print credits and notebook",
-        amountCents: demoExpenseAmount(2840, "School", month),
-        category: "School",
-        occurredOn: date(5),
-        confidence: 0.96,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-5",
-        merchant: "Streamly",
-        description: "Music subscription",
-        amountCents: demoExpenseAmount(1099, "Subscriptions", month),
-        category: "Subscriptions",
-        occurredOn: date(6),
-        confidence: 0.94,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-6",
-        merchant: "Campus Cafe",
-        description: "Coffee before afternoon lab",
-        amountCents: demoExpenseAmount(725, "Food & dining", month),
-        category: "Food & dining",
-        occurredOn: date(8),
-        confidence: 0.93,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-7",
-        merchant: "Laundry Card",
-        description: "Laundry room reload",
-        amountCents: demoExpenseAmount(1400, "Other", month),
-        category: "Other",
-        occurredOn: date(9),
-        confidence: 0.98,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-8",
-        merchant: "Green Bowl",
-        description: "Dinner after campus shift",
-        amountCents: demoExpenseAmount(1860, "Food & dining", month),
-        category: "Food & dining",
-        occurredOn: date(10),
-        confidence: 0.95,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-9",
-        merchant: "Student Cinema",
-        description: "Movie night ticket",
-        amountCents: demoExpenseAmount(1650, "Fun", month),
-        category: "Fun",
-        occurredOn: date(11),
-        confidence: 0.93,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-10",
-        merchant: "Corner Grocer",
-        description: "Produce and breakfast staples",
-        amountCents: demoExpenseAmount(4620, "Food & dining", month),
-        category: "Food & dining",
-        occurredOn: date(12),
-        confidence: 0.96,
-        source: "demo",
-      },
-      {
-        id: "demo-tx-11",
-        merchant: "Campus Pharmacy",
-        description: "Cold medicine and toiletries",
-        amountCents: demoExpenseAmount(968, "Other", month),
-        category: "Other",
-        occurredOn: date(13),
-        confidence: 0.95,
-        source: "demo",
-      },
-    ],
+    transactions: isFuture ? [] : isCurrent ? transactions.filter((transaction) => transaction.occurredOn <= today) : transactions,
   };
 }

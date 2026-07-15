@@ -40,7 +40,7 @@ test("CSV and API date validation reject impossible calendar dates", () => {
 });
 
 test("AI structured outputs require bounded, usable content", () => {
-  const analysis = expenseAnalysisSchema.safeParse({ category: "Food & dining", confidence: 0.92, insight: "On track", action: "Pack lunch twice." });
+  const analysis = expenseAnalysisSchema.safeParse({ category: "Food & dining", confidence: 0.92, rationale: "The merchant is a cafe.", insight: "On track", action: "Pack lunch twice." });
   assert.equal(analysis.success, true);
   const coach = coachPlanSchema.safeParse({
     summary: "Your plan is workable if food spending stays modest this week.",

@@ -4,11 +4,12 @@ import { categories } from "@/lib/budget";
 export const expenseAnalysisSchema = z.object({
   category: z.enum(categories),
   confidence: z.number().min(0).max(1),
+  rationale: z.string().trim().min(1).max(180),
   insight: z.string().trim().min(1).max(240),
   action: z.string().trim().min(1).max(180),
 });
 
-export const aiSourceSchema = z.enum(["openai", "gemini", "local"]);
+export const aiSourceSchema = z.enum(["openai", "gemini", "local", "merchant-rule"]);
 
 export const analysisResultSchema = expenseAnalysisSchema.extend({
   source: aiSourceSchema,
@@ -63,6 +64,13 @@ export type ExpenseAnalysis = z.infer<typeof analysisResultSchema>;
 export type CoachContext = z.infer<typeof coachContextSchema>;
 export type CoachPlan = z.infer<typeof coachPlanSchema>;
 export type AiSource = z.infer<typeof aiSourceSchema>;
+
+export function sourceFromModel(model: string | null | undefined): AiSource | null {
+  if (!model) return null;
+  if (model.toLowerCase().startsWith("gemini")) return "gemini";
+  if (model.toLowerCase().startsWith("gpt-")) return "openai";
+  return null;
+}
 
 export type CoachResult =
   | { status: "ready"; plan: CoachPlan; source: Exclude<AiSource, "local">; model: string }

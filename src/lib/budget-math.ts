@@ -62,6 +62,15 @@ export function isValidMonth(value: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 }
 
+export type MonthState = "past" | "current" | "future";
+
+export function getMonthState(month: string, asOf = new Date()): MonthState {
+  const current = `${asOf.getUTCFullYear()}-${String(asOf.getUTCMonth() + 1).padStart(2, "0")}`;
+  if (month < current) return "past";
+  if (month > current) return "future";
+  return "current";
+}
+
 export function transactionsForMonth(transactions: BudgetTransaction[], month: string) {
   return transactions.filter((transaction) => isInMonth(transaction.occurredOn, month));
 }
@@ -108,11 +117,12 @@ export function getBudgetSummary(transactions: BudgetTransaction[], budgets: Cat
 export function getForecast(totalSpentCents: number, month: string, asOf = new Date(), fixedSpendCents = 0) {
   const [year, monthIndex] = month.split("-").map(Number);
   const daysInMonth = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
-  const isCurrentMonth = asOf.getUTCFullYear() === year && asOf.getUTCMonth() + 1 === monthIndex;
+  const state = getMonthState(month, asOf);
+  const isCurrentMonth = state === "current";
   const elapsedDays = isCurrentMonth ? Math.max(1, asOf.getUTCDate()) : daysInMonth;
   const flexibleSpentCents = Math.max(totalSpentCents - fixedSpendCents, 0);
   const flexibleDailyPaceCents = Math.round(flexibleSpentCents / elapsedDays);
-  const forecastCents = fixedSpendCents + Math.round((flexibleSpentCents / elapsedDays) * daysInMonth);
+  const forecastCents = state === "future" ? 0 : fixedSpendCents + Math.round((flexibleSpentCents / elapsedDays) * daysInMonth);
 
   return {
     forecastCents,
@@ -122,6 +132,7 @@ export function getForecast(totalSpentCents: number, month: string, asOf = new D
     daysInMonth,
     elapsedDays,
     daysRemaining: Math.max(daysInMonth - elapsedDays, 0),
+    state,
   };
 }
 

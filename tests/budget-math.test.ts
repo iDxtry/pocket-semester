@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoWorkspace } from "../src/lib/budget";
-import { getBudgetSummary, getForecast, toCents, transactionsForMonth } from "../src/lib/budget-math";
+import { getBudgetSummary, getForecast, getMonthState, toCents, transactionsForMonth } from "../src/lib/budget-math";
 
 test("money amounts are converted to integer cents", () => {
   assert.equal(toCents(12.345), 1235);
@@ -61,4 +61,12 @@ test("forecast scales spending pace through the selected month", () => {
   assert.equal(forecast.elapsedDays, 10);
   assert.equal(forecast.daysRemaining, 18);
   assert.equal(forecast.forecastCents, 42000);
+});
+
+test("month state separates closed, active, and not-started months", () => {
+  const asOf = new Date("2026-07-15T12:00:00Z");
+  assert.equal(getMonthState("2026-06", asOf), "past");
+  assert.equal(getMonthState("2026-07", asOf), "current");
+  assert.equal(getMonthState("2026-08", asOf), "future");
+  assert.equal(createDemoWorkspace("2026-08", asOf).transactions.length, 0);
 });

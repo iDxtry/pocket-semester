@@ -1,6 +1,7 @@
 import { AccountSetupNotice } from "@/components/account-setup-notice";
 import { BudgetWorkspace } from "@/components/budget-workspace";
 import { categories, type Category } from "@/lib/budget";
+import { sourceFromModel } from "@/lib/ai/types";
 import { currentMonth, getLatestCoachRun, getMonthlyWorkspace } from "@/lib/data";
 import { isAccountPlatformConfigured } from "@/lib/platform";
 import { resolveWorkspaceView, type WorkspaceView } from "@/lib/routes";
@@ -18,5 +19,6 @@ export async function AccountWorkspacePage({ view, searchParams }: { view: Works
   const category = categories.includes(categoryCandidate as Category) ? (categoryCandidate as Category) : "all";
   const { userId } = await requireActiveAccount();
   const [data, latestCoach] = await Promise.all([getMonthlyWorkspace(userId, month), getLatestCoachRun(userId, month)]);
-  return <BudgetWorkspace mode="account" initialView={resolveWorkspaceView(view)} initialData={data} initialCoachPlan={latestCoach?.plan ?? null} initialCategory={category} />;
+  const source = sourceFromModel(latestCoach?.model);
+  return <BudgetWorkspace mode="account" initialView={resolveWorkspaceView(view)} initialData={data} initialCoachPlan={latestCoach?.plan ?? null} initialCoachProvenance={source ? { source, model: latestCoach!.model } : null} initialCategory={category} />;
 }

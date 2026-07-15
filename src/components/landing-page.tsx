@@ -22,8 +22,8 @@ export function LandingPage() {
       <section className="landing-hero">
         <div className="hero-copy">
           <p className="eyebrow">Student spending, in order</p>
-          <h1>A budget that keeps the semester in view.</h1>
-          <p className="hero-lede">Pocket Semester helps students record everyday spending, understand the month ahead, and make one useful next move without turning budgeting into a chore.</p>
+          <h1>Will your money last through finals?</h1>
+          <p className="hero-lede">Pocket Semester turns everyday student spending into a clear semester runway: what is covered, where the pressure is, and which small tradeoff changes the outcome.</p>
           <div className="hero-actions">
             <Link href="/demo" className="primary-button">Try the 60-second demo <ArrowRight weight="bold" /></Link>
             <Link href="/sign-up" className="secondary-button">Create a private budget</Link>
@@ -42,17 +42,17 @@ export function LandingPage() {
         <ol>
           <li><span>01</span><div><strong>Capture</strong><p>Add an expense in seconds or bring in a CSV when you need to catch up.</p></div><UploadSimple weight="bold" /></li>
           <li><span>02</span><div><strong>Forecast</strong><p>Watch category limits, fixed costs, and flexible pace turn into a clear month-end view.</p></div><Wallet weight="bold" /></li>
-          <li><span>03</span><div><strong>Act</strong><p>Use the coach as a focused prompt for one practical adjustment, not a lecture.</p></div><Target weight="bold" /></li>
+          <li><span>03</span><div><strong>Protect the runway</strong><p>Test one purchase, apply a practical tradeoff, and see whether the plan reaches finals.</p></div><Target weight="bold" /></li>
         </ol>
       </section>
 
       <section className="landing-note">
         <LockKey weight="fill" />
-        <div><h2>Personal money stays personal.</h2><p>Signed-in workspaces are private, data can be deleted, and Pocket Semester never asks for bank credentials. Budget guidance is educational only.</p></div>
+        <div><h2>Personal money stays personal.</h2><p>Signed-in workspaces are private, data can be deleted, and Pocket Semester never asks for bank credentials. Gemini only receives the budget details needed when you request AI help. Budget guidance is educational only.</p></div>
         <Link href="/demo" className="text-button">See the sample data <ArrowRight weight="bold" /></Link>
       </section>
 
-      <footer className="landing-footer"><span>© 2026 Pocket Semester</span><span>Built for OpenAI Build Week</span></footer>
+      <footer className="landing-footer"><span>© 2026 Pocket Semester</span><span><Link href="/privacy">Privacy</Link> · Built with GPT‑5.6 in Codex</span></footer>
     </main>
   );
 }
