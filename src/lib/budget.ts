@@ -138,48 +138,61 @@ export function createDemoWorkspace(month = "2026-07", asOf = new Date()): Works
   const currentMonth = today.slice(0, 7);
   const isFuture = month > currentMonth;
   const isCurrent = month === currentMonth;
+  const daysInMonth = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+  const lastTermDay = term.end.startsWith(month) ? Number(term.end.slice(-2)) : daysInMonth;
   const goalBalanceByMonth = [31200, 34800, 39100, 43100, 45200, 43800, 46500, 50100, 46800, 51200, 54600, 58400];
-  const transactions: BudgetTransaction[] = [
+  const sampleTransactions: Array<Omit<BudgetTransaction, "occurredOn"> & { day: number }> = [
     {
-      id: "demo-tx-1", merchant: "Campus Apartments", description: "Residence payment", amountCents: demoExpenseAmount(89500, "Housing", month), category: "Housing", occurredOn: date(1), confidence: 0.99, source: "demo",
+      id: "demo-tx-1", merchant: "Campus Apartments", description: "Residence payment", amountCents: demoExpenseAmount(89500, "Housing", month), category: "Housing", day: 1, confidence: 0.99, source: "demo",
     },
     {
-      id: "demo-tx-2", merchant: "Neighborhood Market", description: "Groceries for the week", amountCents: demoExpenseAmount(4500, "Food & dining", month), category: "Food & dining", occurredOn: date(2), confidence: 0.97, source: "demo",
+      id: "demo-tx-2", merchant: "Neighborhood Market", description: "Groceries for the week", amountCents: demoExpenseAmount(3000, "Food & dining", month), category: "Food & dining", day: 2, confidence: 0.97, source: "demo",
     },
     {
-      id: "demo-tx-3", merchant: "City Bus", description: "Monthly student transit pass", amountCents: demoExpenseAmount(3125, "Transport", month), category: "Transport", occurredOn: date(3), confidence: 0.99, source: "demo",
+      id: "demo-tx-3", merchant: "City Bus", description: "Monthly student transit pass", amountCents: demoExpenseAmount(3125, "Transport", month), category: "Transport", day: 3, confidence: 0.99, source: "demo",
     },
     {
-      id: "demo-tx-12", merchant: "Neighborhood Market", description: "Midweek groceries and snacks", amountCents: demoExpenseAmount(1374, "Food & dining", month), category: "Food & dining", occurredOn: date(4), confidence: 0.96, source: "demo",
+      id: "demo-tx-12", merchant: "Neighborhood Market", description: "Midweek groceries and snacks", amountCents: demoExpenseAmount(950, "Food & dining", month), category: "Food & dining", day: 4, confidence: 0.96, source: "demo",
     },
     {
-      id: "demo-tx-4", merchant: "Campus Print & Supply", description: "Lab print credits and notebook", amountCents: demoExpenseAmount(2840, "School", month), category: "School", occurredOn: date(5), confidence: 0.96, source: "demo",
+      id: "demo-tx-4", merchant: "Campus Print & Supply", description: "Lab print credits and notebook", amountCents: demoExpenseAmount(2840, "School", month), category: "School", day: 5, confidence: 0.96, source: "demo",
     },
     {
-      id: "demo-tx-5", merchant: "Streamly", description: "Music subscription", amountCents: demoExpenseAmount(1099, "Subscriptions", month), category: "Subscriptions", occurredOn: date(6), confidence: 0.94, source: "demo",
+      id: "demo-tx-5", merchant: "Streamly", description: "Music subscription", amountCents: demoExpenseAmount(1099, "Subscriptions", month), category: "Subscriptions", day: 6, confidence: 0.94, source: "demo",
     },
     {
-      id: "demo-tx-6", merchant: "Campus Cafe", description: "Coffee before afternoon lab", amountCents: demoExpenseAmount(725, "Food & dining", month), category: "Food & dining", occurredOn: date(8), confidence: 0.93, source: "demo",
+      id: "demo-tx-6", merchant: "Campus Cafe", description: "Coffee before afternoon lab", amountCents: demoExpenseAmount(600, "Food & dining", month), category: "Food & dining", day: 8, confidence: 0.93, source: "demo",
     },
     {
-      id: "demo-tx-7", merchant: "Laundry Card", description: "Laundry room reload", amountCents: demoExpenseAmount(1400, "Other", month), category: "Other", occurredOn: date(9), confidence: 0.98, source: "demo",
+      id: "demo-tx-7", merchant: "Laundry Card", description: "Laundry room reload", amountCents: demoExpenseAmount(1400, "Other", month), category: "Other", day: 9, confidence: 0.98, source: "demo",
     },
     {
-      id: "demo-tx-8", merchant: "Green Bowl", description: "Dinner after campus shift", amountCents: demoExpenseAmount(1860, "Food & dining", month), category: "Food & dining", occurredOn: date(10), confidence: 0.95, source: "demo",
+      id: "demo-tx-8", merchant: "Green Bowl", description: "Dinner after campus shift", amountCents: demoExpenseAmount(1350, "Food & dining", month), category: "Food & dining", day: 10, confidence: 0.95, source: "demo",
     },
     {
-      id: "demo-tx-9", merchant: month.slice(5) === "10" ? "Student Football" : "Student Cinema", description: month.slice(5) === "10" ? "Home game ticket" : "Movie night ticket", amountCents: demoExpenseAmount(1650, "Fun", month), category: "Fun", occurredOn: date(11), confidence: 0.93, source: "demo",
+      id: "demo-tx-9", merchant: month.slice(5) === "10" ? "Student Football" : "Student Cinema", description: month.slice(5) === "10" ? "Home game ticket" : "Movie night ticket", amountCents: demoExpenseAmount(1650, "Fun", month), category: "Fun", day: 11, confidence: 0.93, source: "demo",
     },
     {
-      id: "demo-tx-10", merchant: "Corner Grocer", description: "Produce and breakfast staples", amountCents: demoExpenseAmount(2950, "Food & dining", month), category: "Food & dining", occurredOn: date(12), confidence: 0.96, source: "demo",
+      id: "demo-tx-10", merchant: "Corner Grocer", description: "Produce and breakfast staples", amountCents: demoExpenseAmount(1900, "Food & dining", month), category: "Food & dining", day: 12, confidence: 0.96, source: "demo",
     },
     {
-      id: "demo-tx-11", merchant: "Campus Pharmacy", description: "Cold medicine and toiletries", amountCents: demoExpenseAmount(968, "Other", month), category: "Other", occurredOn: date(13), confidence: 0.95, source: "demo",
+      id: "demo-tx-11", merchant: "Campus Pharmacy", description: "Cold medicine and toiletries", amountCents: demoExpenseAmount(968, "Other", month), category: "Other", day: 13, confidence: 0.95, source: "demo",
     },
     {
-      id: "demo-tx-13", merchant: "Corner Grocer", description: "Fruit and breakfast refill", amountCents: demoExpenseAmount(1670, "Food & dining", month), category: "Food & dining", occurredOn: date(15), confidence: 0.95, source: "demo",
+      id: "demo-tx-13", merchant: "Corner Grocer", description: "Fruit and breakfast refill", amountCents: demoExpenseAmount(1000, "Food & dining", month), category: "Food & dining", day: 15, confidence: 0.95, source: "demo",
     },
+    { id: "demo-tx-14", merchant: "Campus Cafe", description: "Coffee and a bagel", amountCents: demoExpenseAmount(450, "Food & dining", month), category: "Food & dining", day: 16, confidence: 0.94, source: "demo" },
+    { id: "demo-tx-15", merchant: "Green Bowl", description: "Lunch between classes", amountCents: demoExpenseAmount(525, "Food & dining", month), category: "Food & dining", day: 18, confidence: 0.95, source: "demo" },
+    { id: "demo-tx-16", merchant: "Corner Grocer", description: "Dinner ingredients", amountCents: demoExpenseAmount(675, "Food & dining", month), category: "Food & dining", day: 20, confidence: 0.96, source: "demo" },
+    { id: "demo-tx-17", merchant: "Campus Cafe", description: "Study break tea", amountCents: demoExpenseAmount(480, "Food & dining", month), category: "Food & dining", day: 22, confidence: 0.94, source: "demo" },
+    { id: "demo-tx-18", merchant: "Library Cafe", description: "Late study snack", amountCents: demoExpenseAmount(610, "Food & dining", month), category: "Food & dining", day: 24, confidence: 0.94, source: "demo" },
+    { id: "demo-tx-19", merchant: "Weekend Market", description: "Fruit and pantry refill", amountCents: demoExpenseAmount(440, "Food & dining", month), category: "Food & dining", day: 26, confidence: 0.96, source: "demo" },
+    { id: "demo-tx-20", merchant: "Campus Cafe", description: "Iced coffee after class", amountCents: demoExpenseAmount(530, "Food & dining", month), category: "Food & dining", day: 28, confidence: 0.94, source: "demo" },
+    { id: "demo-tx-21", merchant: "Corner Grocer", description: "End-of-month breakfast refill", amountCents: demoExpenseAmount(569, "Food & dining", month), category: "Food & dining", day: 30, confidence: 0.96, source: "demo" },
   ];
+  const transactions = sampleTransactions
+    .filter((transaction) => transaction.day <= lastTermDay)
+    .map(({ day, ...transaction }) => ({ ...transaction, occurredOn: date(day) }));
   return {
     profile: {
       displayName: "Alex Rivera",

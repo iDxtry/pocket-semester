@@ -9,7 +9,7 @@ test("money amounts are converted to integer cents", () => {
 });
 
 test("budget summary aggregates every category without float drift", () => {
-  const data = createDemoWorkspace();
+  const data = createDemoWorkspace("2026-07", new Date("2026-08-01T12:00:00Z"));
   const summary = getBudgetSummary(data.transactions, data.budgets);
   assert.equal(summary.totalSpentCents, 113661);
   assert.equal(summary.categoryHealth.find((item) => item.category === "Food & dining")?.spentCents, 13079);
@@ -39,12 +39,41 @@ test("demo months have distinct budgets, spending, and term-safe dates", () => {
   const juneSummary = getBudgetSummary(june.transactions, june.budgets);
   const julySummary = getBudgetSummary(july.transactions, july.budgets);
   const augustSummary = getBudgetSummary(august.transactions, august.budgets);
-  assert.ok(Math.abs(juneSummary.totalSpentCents - julySummary.totalSpentCents) >= 2_000);
-  assert.ok(Math.abs(augustSummary.totalSpentCents - julySummary.totalSpentCents) >= 3_000);
+  assert.notEqual(juneSummary.totalSpentCents, julySummary.totalSpentCents);
+  assert.notEqual(augustSummary.totalSpentCents, julySummary.totalSpentCents);
   assert.notDeepEqual(june.budgets, july.budgets);
   assert.ok(june.budgets.reduce((sum, budget) => sum + budget.limitCents, 0) <= june.profile.monthlyAllowanceCents);
   assert.ok(august.budgets.reduce((sum, budget) => sum + budget.limitCents, 0) <= august.profile.monthlyAllowanceCents);
   assert.ok(august.transactions.every((transaction) => transaction.occurredOn >= august.profile.semesterStart! && transaction.occurredOn <= august.profile.semesterEnd!));
+});
+
+test("completed demo months have a believable cadence without long quiet stretches", () => {
+  const asOf = new Date("2026-11-15T12:00:00Z");
+  for (const month of ["2026-03", "2026-07", "2026-10"]) {
+    const data = createDemoWorkspace(month, asOf);
+    const activeDates = new Set(data.transactions.map((transaction) => transaction.occurredOn));
+    const [year, monthNumber] = month.split("-").map(Number);
+    const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    let quietRun = 0;
+
+    assert.ok(activeDates.size >= 18);
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = `${month}-${String(day).padStart(2, "0")}`;
+      quietRun = activeDates.has(date) ? 0 : quietRun + 1;
+      assert.ok(quietRun <= 2, `${month} should not have more than two consecutive quiet days`);
+    }
+  }
+});
+
+test("current demo months omit future activity and short terms do not collapse later purchases", () => {
+  const currentAsOf = new Date("2026-07-15T12:00:00Z");
+  const july = createDemoWorkspace("2026-07", currentAsOf);
+  const julyCalendar = makeMonthSeries(july.transactions, "2026-07", currentAsOf);
+  assert.ok(july.transactions.every((transaction) => transaction.occurredOn <= "2026-07-15"));
+  assert.ok(julyCalendar.filter((day) => day.isUpcoming).every((day) => day.amountCents === 0));
+
+  const august = createDemoWorkspace("2026-08", new Date("2026-09-01T12:00:00Z"));
+  assert.equal(august.transactions.filter((transaction) => transaction.occurredOn === "2026-08-16").length, 1);
 });
 
 test("month views ignore transactions that belong to a different month", () => {

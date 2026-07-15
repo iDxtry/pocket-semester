@@ -574,6 +574,8 @@ function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference,
   summary: ReturnType<typeof getBudgetSummary>; forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; forecastDifference: number; goal: ReturnType<typeof goalProgress>; profile: StudentProfile; transactions: BudgetTransaction[]; monthState: ReturnType<typeof getMonthState>; monthSeries: ReturnType<typeof makeMonthSeries>; runway: ReturnType<typeof calculateSemesterRunway>; runwayFundsCents: number; runwayPurchaseCents: number; runwayActions: string[]; coachPlan: CoachPlan | null; coachProvenance: CoachProvenance | null; coachState: "idle" | "loading"; coachError: string; isDemo: boolean; hasCategorization: boolean; onAddExpense: () => void; onRefreshCoach: () => void; onFundsChange: (cents: number) => void; onPurchaseChange: (cents: number) => void; onActionsChange: (ids: string[]) => void; onOpenTransactions: () => void; onDrilldown: (category: Category) => void;
 }) {
   const forecastTitle = monthState === "past" ? "Final month total" : monthState === "future" ? "Planned month estimate" : "End-of-month forecast";
+  const activityDays = monthSeries.filter((day) => day.amountCents > 0).length;
+  const flexibleSpentCents = Math.max(summary.totalSpentCents - fixedSpendCents, 0);
   return <>
     <section className="metrics" aria-label="Budget summary">
       <article className="metric primary-metric"><div className="metric-heading"><span>Plan remaining</span><Wallet /></div><strong>{formatMoney(summary.availableCents, profile.currency)}</strong><p><ArrowUpRight weight="bold" /> {summary.percentUsed}% of plan used · {formatMoney(Math.max(profile.monthlyAllowanceCents - summary.totalBudgetCents, 0), profile.currency)} buffer</p><div className="budget-track" aria-label={`${summary.percentUsed}% of budget used`}><span style={{ width: `${Math.min(summary.percentUsed, 100)}%` }} /></div></article>
@@ -584,7 +586,7 @@ function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference,
     <ForecastExplainer forecast={forecast} fixedSpendCents={fixedSpendCents} currency={profile.currency} state={monthState} />
     <RunwayPanel state={monthState} runway={runway} currency={profile.currency} availableFundsCents={runwayFundsCents} plannedPurchaseCents={runwayPurchaseCents} selectedActionIds={runwayActions} onFundsChange={onFundsChange} onPurchaseChange={onPurchaseChange} onActionsChange={onActionsChange} />
     <section className="main-grid">
-      <article className="panel spending-panel"><div className="panel-heading"><div><h2>Daily spending this month</h2><p>{monthState === "future" ? "This month has not started yet. Future days stay empty until activity begins." : "Every date is shown. Fixed bills are labeled so they do not look like everyday spending."}</p></div><span className="trend-tag"><CalendarBlank weight="bold" /> {monthState === "current" ? `${forecast.daysRemaining} days left` : monthState === "past" ? "Month closed" : "Planning view"}</span></div><SpendingCalendar days={monthSeries} currency={profile.currency} /></article>
+      <article className="panel spending-panel"><div className="panel-heading"><div><h2>Daily spending this month</h2><p>{monthState === "future" ? "This month has not started yet. Future days stay empty until activity begins." : "Every date is shown. Fixed bills are labeled so they do not look like everyday spending."}</p></div><span className="trend-tag"><CalendarBlank weight="bold" /> {monthState === "current" ? `${forecast.daysRemaining} days left` : monthState === "past" ? "Month closed" : "Planning view"}</span></div><p className="spending-summary">{monthState === "future" ? "No expenses are scheduled in this planning view." : `${activityDays} activity days · ${formatMoney(fixedSpendCents, profile.currency)} fixed bills · ${formatMoney(flexibleSpentCents, profile.currency)} flexible spending`}</p><SpendingCalendar days={monthSeries} currency={profile.currency} /></article>
       <CoachCard coachPlan={coachPlan} provenance={coachProvenance} state={coachState} error={coachError} currency={profile.currency} onRefresh={onRefreshCoach} compact />
     </section>
     <section className="lower-grid">
@@ -606,7 +608,7 @@ function SpendingCalendar({ days, currency }: { days: ReturnType<typeof makeMont
       const stateLabel = day.isUpcoming ? "Upcoming" : amount ? `${amount} across ${day.transactionCount} expense${day.transactionCount === 1 ? "" : "s"}` : "No spending";
       return <article className={`spending-day ${day.isUpcoming ? "upcoming" : ""} ${day.fixedCostLabel ? "fixed-cost" : ""} ${amount ? "has-spending" : ""}`} role="gridcell" aria-label={`${day.weekday}, ${day.date}: ${stateLabel}`} key={day.date}>
         <span className="spending-day-number">{day.day}</span>
-        {day.isUpcoming ? <small>Upcoming</small> : amount ? <strong>{amount}</strong> : <small>No spend</small>}
+        {day.isUpcoming ? <small>Upcoming</small> : amount ? <strong>{amount}</strong> : <span className="spending-day-empty" aria-hidden="true" />}
         {day.fixedCostLabel && !day.isUpcoming && <span className="spending-day-fixed">{day.fixedCostLabel}</span>}
       </article>;
     })}

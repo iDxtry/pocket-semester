@@ -249,6 +249,7 @@ svg { flex: 0 0 auto; }
 .trend-tag { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-strong); font: 560 11px/1 "Geist Mono", monospace; white-space: nowrap; }
 .trend-tag svg { width: 14px; height: 14px; }
 .spending-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin-top: 18px; }
+.spending-summary { margin: 14px 0 -3px; color: var(--muted); font: 560 10px/1.4 "Geist Mono", monospace; }
 .spending-calendar-weekday { padding: 0 3px 5px; color: var(--muted); font: 600 9px/1 "Geist Mono", monospace; text-align: right; text-transform: uppercase; }
 .spending-calendar-blank { min-height: 82px; border-top: 1px solid var(--line); }
 .spending-day { position: relative; display: grid; align-content: start; gap: 5px; min-width: 0; min-height: 82px; padding: 8px 7px; border-top: 1px solid var(--line); background: var(--surface); }
@@ -258,6 +259,7 @@ svg { flex: 0 0 auto; }
 .spending-day-number { color: var(--muted); font: 560 9px/1 "Geist Mono", monospace; }
 .spending-day strong { overflow: hidden; color: var(--foreground); font: 650 clamp(9px, 1.2vw, 13px)/1 "Geist Mono", monospace; letter-spacing: -0.06em; text-overflow: ellipsis; white-space: nowrap; }
 .spending-day small { color: var(--muted); font-size: 9px; line-height: 1.15; }
+.spending-day-empty { min-height: 1em; }
 .spending-day-fixed { display: -webkit-box; overflow: hidden; color: var(--accent-strong); font-size: 8px; line-height: 1.2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .lower-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr); gap: 14px; margin-top: 14px; }
 .transaction-list, .transaction-table { margin-top: 14px; }
