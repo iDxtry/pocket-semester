@@ -323,6 +323,15 @@ svg { flex: 0 0 auto; }
 /* Coach */
 .coach-card { display: flex; flex-direction: column; padding: 21px; border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line)); border-radius: 11px; background: var(--accent-soft); animation: fadeInUp 400ms ease both; animation-delay: 80ms; }
 .coach-card-compact { min-height: 100%; }
+.weekly-digest-card { min-height: auto; padding: 17px 21px; }
+.weekly-digest-card .coach-card-top .insight-icon { width: 25px; height: 25px; }
+.weekly-digest-card h2 { font-size: 15px; }
+.weekly-digest-card > p { margin: 11px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.weekly-coach-note { display: grid; gap: 4px; margin-top: 13px; padding: 11px 12px; border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--surface) 68%, transparent); }
+.weekly-coach-note small, .weekly-digest-prompt { color: var(--muted); font-size: 10px; }
+.weekly-coach-note strong { font-size: 12px; }
+.weekly-coach-note span { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.weekly-digest-prompt { margin-top: 13px !important; }
 .coach-card-top { display: flex; align-items: flex-start; gap: 13px; }
 .insight-icon { width: 28px; height: 28px; display: grid; place-items: center; color: var(--accent-strong); }
 .insight-icon svg { width: 21px; height: 21px; }

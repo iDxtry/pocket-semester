@@ -34,7 +34,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { categories, categoryColors, type BudgetTransaction, type Category, type CategoryBudget, type StudentGoal, type StudentProfile, type WorkspaceData } from "@/lib/budget";
-import { formatMoney, getBudgetSummary, getExpenseBudgetImpact, getForecast, getMonthState, getSpendingStreaks, goalProgress, isoDateForMonthOffset, makeMonthSeries, monthEnd, monthLabel, monthShortLabel, toCents, transactionsForMonth } from "@/lib/budget-math";
+import { formatMoney, getBudgetSummary, getExpenseBudgetImpact, getForecast, getMonthState, getSpendingStreaks, getWeeklySpendingDigest, goalProgress, isoDateForMonthOffset, makeMonthSeries, monthEnd, monthLabel, monthShortLabel, toCents, transactionsForMonth } from "@/lib/budget-math";
 import { parseMappedCsvRows, type ParsedCsvExpense } from "@/lib/csv";
 import type { AiSource, CoachPlan } from "@/lib/ai/types";
 import { resolveWorkspaceView, routeForView, type WorkspaceView } from "@/lib/routes";
@@ -577,7 +577,7 @@ function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference,
 }) {
   const forecastTitle = monthState === "past" ? "Final month total" : monthState === "future" ? "Planned month estimate" : "End-of-month forecast";
   const activityDays = monthSeries.filter((day) => day.amountCents > 0).length;
-  const flexibleSpentCents = Math.max(summary.totalSpentCents - fixedSpendCents, 0);
+  const weeklyDigest = getWeeklySpendingDigest(transactions);
   return <>
     <section className="metrics" aria-label="Budget summary">
       <article className="metric primary-metric"><div className="metric-heading"><span>Plan remaining</span><Wallet /></div><strong>{formatMoney(summary.availableCents, profile.currency)}</strong><p><ArrowUpRight weight="bold" /> {summary.percentUsed}% of plan used · {formatMoney(Math.max(profile.monthlyAllowanceCents - summary.totalBudgetCents, 0), profile.currency)} buffer</p><div className="budget-track" aria-label={`${summary.percentUsed}% of budget used`}><span style={{ width: `${Math.min(summary.percentUsed, 100)}%` }} /></div></article>
@@ -590,7 +590,7 @@ function DashboardView({ summary, forecast, fixedSpendCents, forecastDifference,
     <section className="main-grid">
       <article className="panel spending-panel"><div className="panel-heading"><div><h2>Daily spending this month</h2><p>{monthState === "future" ? "This month has not started yet. Future days stay empty until activity begins." : "Every date is shown. Fixed bills are labeled so they do not look like everyday spending."}</p></div><span className="trend-tag"><CalendarBlank weight="bold" /> {monthState === "current" ? `${forecast.daysRemaining} days left` : monthState === "past" ? "Month closed" : "Planning view"}</span></div><p className="spending-summary">{monthState === "future" ? "No expenses are scheduled in this planning view." : <>{activityDays} activity days · <span className={streaks.noSpendDays > 0 ? "snapshot-positive" : ""}>{streaks.noSpendDays} no-spend days</span> · {streaks.currentStreak >= 2 ? <strong className="snapshot-positive">{streaks.currentStreak}-day under-pace streak! 🔥</strong> : `Best streak: ${streaks.bestStreak} days`}</>}</p><SpendingCalendar days={monthSeries} currency={profile.currency} /></article>
       <div className="coach-stack" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <WeeklyDigestCard />
+        <WeeklyDigestCard digest={weeklyDigest} currency={profile.currency} coachPlan={coachPlan} provenance={coachProvenance} runway={runway} />
         <CoachCard coachPlan={coachPlan} provenance={coachProvenance} state={coachState} error={coachError} currency={profile.currency} onRefresh={onRefreshCoach} compact />
       </div>
     </section>
@@ -632,7 +632,7 @@ function BudgetHealthChart({ summary, currency }: { summary: ReturnType<typeof g
             ))}
           </Pie>
           <Tooltip 
-            formatter={(value: any) => formatMoney(Number(value) || 0, currency)}
+            formatter={(value: unknown) => formatMoney(typeof value === "number" || typeof value === "string" ? Number(value) || 0 : 0, currency)}
             contentStyle={{ borderRadius: '8px', border: '1px solid var(--line)', background: 'var(--surface-strong)', fontSize: '12px' }}
             itemStyle={{ color: 'var(--foreground)' }}
           />
@@ -646,19 +646,22 @@ function BudgetHealthChart({ summary, currency }: { summary: ReturnType<typeof g
   );
 }
 
-function WeeklyDigestCard() {
+function WeeklyDigestCard({ digest, currency, coachPlan, provenance, runway }: { digest: ReturnType<typeof getWeeklySpendingDigest>; currency: string; coachPlan: CoachPlan | null; provenance: CoachProvenance | null; runway: ReturnType<typeof calculateSemesterRunway> }) {
+  const generatedNote = (provenance?.source === "gemini" || provenance?.source === "openai") && coachPlan?.actions[0];
+  const change = digest.changePercent === null ? "No prior-week comparison yet" : digest.changePercent === 0 ? "Even with last week" : `${Math.abs(digest.changePercent)}% ${digest.changePercent > 0 ? "above" : "below"} last week`;
+  const factualSummary = digest.expenseCount === 0 ? "No expenses were recorded in the latest seven-day window." : `You spent ${formatMoney(digest.spendCents, currency)} across ${digest.expenseCount} expense${digest.expenseCount === 1 ? "" : "s"}. ${digest.leadingCategory ? `${digest.leadingCategory} led at ${formatMoney(digest.leadingCategoryCents, currency)}.` : ""}`;
+  const runwaySummary = runway.status === "covered" ? `Your current scenario still has a ${formatMoney(runway.finalBufferCents, currency)} finals buffer.` : runway.status === "shortfall" ? `Your current scenario is ${formatMoney(runway.shortfallCents, currency)} short before finals.` : "Choose the current month to calculate your semester runway.";
   return (
-    <article className="coach-card" style={{ minHeight: 'auto', padding: '16px 21px' }}>
+    <article className="coach-card weekly-digest-card">
       <div className="coach-card-top">
-        <div className="insight-icon" style={{ width: '24px', height: '24px' }}><Brain weight="fill" /></div>
+        <div className="insight-icon"><Brain weight="fill" /></div>
         <div>
-          <span className="ai-label" style={{ marginBottom: '2px' }}>Weekly AI Digest</span>
-          <h2 style={{ fontSize: '15px' }}>Food spending is up 23%</h2>
+          <span className="ai-label">Weekly check-in</span>
+          <h2>{change}</h2>
         </div>
       </div>
-      <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '10px 0 0', lineHeight: 1.5 }}>
-        You spent <strong>$127 on Food & dining</strong> this week, driven mostly by late-night study snacks. Even with this spike, your current runway still covers through finals with a <strong>$89 buffer</strong>.
-      </p>
+      <p>{factualSummary} {runwaySummary}</p>
+      {generatedNote ? <div className="weekly-coach-note"><small>Coach note</small><strong>{generatedNote.title}</strong><span>{generatedNote.detail}</span></div> : <p className="weekly-digest-prompt">Refresh your spending plan to add a personalized coach note.</p>}
     </article>
   );
 }
@@ -690,9 +693,9 @@ function DemoChecklist({ hasCategorization, hasRefreshedPlan, hasRunway, onAddEx
     </div>
   );
   if (allComplete) {
-    return <section className="demo-progress" aria-label="Guided tour complete"><div className="demo-progress-heading"><span>Tour complete 🎉</span><p>You've seen the core features.</p></div>{narrative}<Link href="/sign-up" className="primary-button" style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>Create a real account</Link></section>;
+    return <section className="demo-progress" aria-label="Guided tour complete"><div className="demo-progress-heading"><span>Tour complete 🎉</span><p>You&apos;ve seen the core features.</p></div>{narrative}<Link href="/sign-up" className="primary-button" style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>Create a real account</Link></section>;
   }
-  return <section className="demo-progress" aria-label="5-step guided tour"><div className="demo-progress-heading"><span>Guided tour</span><p>Fictional data · resets on reload</p></div>{narrative}<ol><li className="complete"><span><CheckCircle weight="fill" /></span><strong>See your month at a glance</strong></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "2"}</span><strong>Add an expense</strong><button className="text-button" onClick={onAddExpense}>Try it <ArrowRight /></button></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "3"}</span><strong>Watch AI categorize it</strong></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "4"}</span><strong>Check the scenario planner</strong></li><li className={hasRefreshedPlan ? "complete" : ""}><span>{hasRefreshedPlan ? <CheckCircle weight="fill" /> : "5"}</span><strong>Get a personalized plan</strong><button className="text-button" onClick={onRefreshPlan}>Refresh <ArrowRight /></button></li></ol></section>;
+  return <section className="demo-progress" aria-label="5-step guided tour"><div className="demo-progress-heading"><span>Guided tour</span><p>Fictional data · resets on reload</p></div>{narrative}<ol><li className="complete"><span><CheckCircle weight="fill" /></span><strong>See your month at a glance</strong></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "2"}</span><strong>Add an expense</strong><button className="text-button" onClick={onAddExpense}>Try it <ArrowRight /></button></li><li className={hasCategorization ? "complete" : ""}><span>{hasCategorization ? <CheckCircle weight="fill" /> : "3"}</span><strong>Watch AI categorize it</strong></li><li className={hasRunway ? "complete" : ""}><span>{hasRunway ? <CheckCircle weight="fill" /> : "4"}</span><strong>Check the scenario planner</strong></li><li className={hasRefreshedPlan ? "complete" : ""}><span>{hasRefreshedPlan ? <CheckCircle weight="fill" /> : "5"}</span><strong>Get a personalized plan</strong><button className="text-button" onClick={onRefreshPlan}>Refresh <ArrowRight /></button></li></ol></section>;
 }
 
 function ForecastExplainer({ forecast, fixedSpendCents, currency, state }: { forecast: ReturnType<typeof getForecast>; fixedSpendCents: number; currency: string; state: ReturnType<typeof getMonthState> }) {
