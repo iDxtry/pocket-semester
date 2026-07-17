@@ -233,3 +233,38 @@ export function getSpendingStreaks(monthSeries: MonthDaySeriesPoint[], dailyPace
   currentStreak = runningStreak;
   return { currentStreak, bestStreak, noSpendDays, activeDays };
 }
+
+export type WeeklySpendingDigest = {
+  spendCents: number;
+  previousSpendCents: number;
+  expenseCount: number;
+  leadingCategory: Category | null;
+  leadingCategoryCents: number;
+  changePercent: number | null;
+};
+
+export function getWeeklySpendingDigest(transactions: BudgetTransaction[]): WeeklySpendingDigest {
+  const datedTransactions = [...transactions].sort((a, b) => a.occurredOn.localeCompare(b.occurredOn));
+  const anchor = datedTransactions.at(-1)?.occurredOn;
+  if (!anchor) return { spendCents: 0, previousSpendCents: 0, expenseCount: 0, leadingCategory: null, leadingCategoryCents: 0, changePercent: null };
+
+  const anchorDate = new Date(`${anchor}T12:00:00Z`);
+  const currentStart = new Date(anchorDate.getTime() - 6 * 86_400_000).toISOString().slice(0, 10);
+  const previousEnd = new Date(anchorDate.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
+  const previousStart = new Date(anchorDate.getTime() - 13 * 86_400_000).toISOString().slice(0, 10);
+  const current = datedTransactions.filter((transaction) => transaction.occurredOn >= currentStart && transaction.occurredOn <= anchor);
+  const previous = datedTransactions.filter((transaction) => transaction.occurredOn >= previousStart && transaction.occurredOn <= previousEnd);
+  const spendCents = current.reduce((total, transaction) => total + transaction.amountCents, 0);
+  const previousSpendCents = previous.reduce((total, transaction) => total + transaction.amountCents, 0);
+  const categoryTotals = getSpentByCategory(current);
+  const [leadingCategory, leadingCategoryCents] = categories.reduce<[Category | null, number]>((leading, category) => categoryTotals[category] > leading[1] ? [category, categoryTotals[category]] : leading, [null, 0]);
+
+  return {
+    spendCents,
+    previousSpendCents,
+    expenseCount: current.length,
+    leadingCategory,
+    leadingCategoryCents,
+    changePercent: previousSpendCents > 0 ? Math.round(((spendCents - previousSpendCents) / previousSpendCents) * 100) : null,
+  };
+}

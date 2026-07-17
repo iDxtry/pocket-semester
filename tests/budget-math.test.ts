@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoWorkspace } from "../src/lib/budget";
-import { getBudgetSummary, getExpenseBudgetImpact, getForecast, getMonthState, makeMonthSeries, toCents, transactionsForMonth } from "../src/lib/budget-math";
+import { getBudgetSummary, getExpenseBudgetImpact, getForecast, getMonthState, getWeeklySpendingDigest, makeMonthSeries, toCents, transactionsForMonth } from "../src/lib/budget-math";
 
 test("money amounts are converted to integer cents", () => {
   assert.equal(toCents(12.345), 1235);
@@ -20,6 +20,15 @@ test("expense impact distinguishes healthy, watch, and over-plan category effect
   assert.deepEqual(getExpenseBudgetImpact(7600, 10000), { remainingCents: 2400, percentUsed: 76, status: "on-track" });
   assert.deepEqual(getExpenseBudgetImpact(9100, 10000), { remainingCents: 900, percentUsed: 91, status: "watch" });
   assert.deepEqual(getExpenseBudgetImpact(10750, 10000), { remainingCents: -750, percentUsed: 108, status: "over" });
+});
+
+test("weekly digest uses real recent spending instead of fixed sample copy", () => {
+  const transactions = [
+    { id: "old", merchant: "Market", description: "Groceries", amountCents: 2000, category: "Food & dining" as const, occurredOn: "2026-07-01", confidence: 1, source: "demo" as const },
+    { id: "current-1", merchant: "Cafe", description: "Coffee", amountCents: 600, category: "Food & dining" as const, occurredOn: "2026-07-08", confidence: 1, source: "demo" as const },
+    { id: "current-2", merchant: "Bus", description: "Fare", amountCents: 250, category: "Transport" as const, occurredOn: "2026-07-10", confidence: 1, source: "demo" as const },
+  ];
+  assert.deepEqual(getWeeklySpendingDigest(transactions), { spendCents: 850, previousSpendCents: 2000, expenseCount: 2, leadingCategory: "Food & dining", leadingCategoryCents: 600, changePercent: -57 });
 });
 
 test("demo data keeps its plan inside the allowance and its activity inside the active term", () => {
