@@ -243,10 +243,12 @@ export type WeeklySpendingDigest = {
   changePercent: number | null;
 };
 
-export function getWeeklySpendingDigest(transactions: BudgetTransaction[]): WeeklySpendingDigest {
+export function getWeeklySpendingDigest(transactions: BudgetTransaction[], asOf = new Date()): WeeklySpendingDigest {
   const datedTransactions = [...transactions].sort((a, b) => a.occurredOn.localeCompare(b.occurredOn));
-  const anchor = datedTransactions.at(-1)?.occurredOn;
-  if (!anchor) return { spendCents: 0, previousSpendCents: 0, expenseCount: 0, leadingCategory: null, leadingCategoryCents: 0, changePercent: null };
+  const latestTransactionDate = datedTransactions.at(-1)?.occurredOn;
+  if (!latestTransactionDate) return { spendCents: 0, previousSpendCents: 0, expenseCount: 0, leadingCategory: null, leadingCategoryCents: 0, changePercent: null };
+  const today = asOf.toISOString().slice(0, 10);
+  const anchor = latestTransactionDate.slice(0, 7) === today.slice(0, 7) ? today : latestTransactionDate;
 
   const anchorDate = new Date(`${anchor}T12:00:00Z`);
   const currentStart = new Date(anchorDate.getTime() - 6 * 86_400_000).toISOString().slice(0, 10);

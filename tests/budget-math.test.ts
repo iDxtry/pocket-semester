@@ -28,7 +28,23 @@ test("weekly digest uses real recent spending instead of fixed sample copy", () 
     { id: "current-1", merchant: "Cafe", description: "Coffee", amountCents: 600, category: "Food & dining" as const, occurredOn: "2026-07-08", confidence: 1, source: "demo" as const },
     { id: "current-2", merchant: "Bus", description: "Fare", amountCents: 250, category: "Transport" as const, occurredOn: "2026-07-10", confidence: 1, source: "demo" as const },
   ];
-  assert.deepEqual(getWeeklySpendingDigest(transactions), { spendCents: 850, previousSpendCents: 2000, expenseCount: 2, leadingCategory: "Food & dining", leadingCategoryCents: 600, changePercent: -57 });
+  assert.deepEqual(getWeeklySpendingDigest(transactions, new Date("2026-07-10T12:00:00Z")), { spendCents: 850, previousSpendCents: 2000, expenseCount: 2, leadingCategory: "Food & dining", leadingCategoryCents: 600, changePercent: -57 });
+});
+
+test("weekly digest includes quiet current-month days through today", () => {
+  const transactions = [
+    { id: "previous", merchant: "Market", description: "Groceries", amountCents: 1000, category: "Food & dining" as const, occurredOn: "2026-07-09", confidence: 1, source: "demo" as const },
+    { id: "current", merchant: "Cafe", description: "Coffee", amountCents: 600, category: "Food & dining" as const, occurredOn: "2026-07-15", confidence: 1, source: "demo" as const },
+  ];
+
+  assert.deepEqual(getWeeklySpendingDigest(transactions, new Date("2026-07-20T12:00:00Z")), {
+    spendCents: 600,
+    previousSpendCents: 1000,
+    expenseCount: 1,
+    leadingCategory: "Food & dining",
+    leadingCategoryCents: 600,
+    changePercent: -40,
+  });
 });
 
 test("demo data keeps its plan inside the allowance and its activity inside the active term", () => {
