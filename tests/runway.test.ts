@@ -3,9 +3,9 @@ import test from "node:test";
 import { createDemoWorkspace } from "../src/lib/budget";
 import { calculateSemesterRunway } from "../src/lib/runway";
 
-const asOf = new Date("2026-07-15T12:00:00Z");
+const asOf = new Date("2026-07-17T12:00:00Z");
 
-test("semester runway uses cents and visibly improves when a tradeoff is selected", () => {
+test("semester runway reports the true finals shortfall and tradeoff resources", () => {
   const workspace = createDemoWorkspace("2026-07", asOf);
   const baseline = calculateSemesterRunway({
     month: workspace.month,
@@ -24,12 +24,20 @@ test("semester runway uses cents and visibly improves when a tradeoff is selecte
     budgets: workspace.budgets,
     availableFundsCents: 120_000,
     plannedPurchaseCents: 26_000,
-    selectedActionIds: ["postpone-purchase", "food-cap"],
+    selectedActionIds: ["postpone-purchase"],
     asOf,
   });
 
   assert.ok(baseline.projectedNeedCents > 0);
-  assert.ok(adjusted.finalBufferCents + adjusted.shortfallCents >= baseline.finalBufferCents + baseline.shortfallCents);
-  assert.ok(adjusted.finalBufferCents > baseline.finalBufferCents || adjusted.shortfallCents < baseline.shortfallCents);
+  assert.equal(baseline.projectedNeedCents, 131_455);
+  assert.equal(baseline.effectiveResourcesCents, 120_000);
+  assert.equal(baseline.shortfallCents, 11_455);
+  assert.equal(baseline.shortfallCents, Math.max(baseline.projectedNeedCents - 120_000, 0));
+  assert.equal(adjusted.selectedImpactCents, 26_000);
+  assert.equal(adjusted.effectiveResourcesCents, 146_000);
+  assert.equal(adjusted.finalBufferCents, 14_545);
+  assert.equal(adjusted.finalBufferCents, Math.max(146_000 - adjusted.projectedNeedCents, 0));
+  assert.equal(baseline.status, "shortfall");
+  assert.equal(adjusted.status, "covered");
   assert.ok(adjusted.actions.some((action) => action.id === "postpone-purchase"));
 });
