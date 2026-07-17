@@ -12,6 +12,8 @@ export type SemesterRunway = {
   status: "covered" | "shortfall" | "unavailable";
   coveredThrough: string | null;
   projectedNeedCents: number;
+  selectedImpactCents: number;
+  effectiveResourcesCents: number;
   finalBufferCents: number;
   shortfallCents: number;
   daysToFinals: number;
@@ -43,14 +45,14 @@ function daysBetween(start: Date, end: Date) {
 
 export function calculateSemesterRunway({ month, profile, transactions, budgets, availableFundsCents, plannedPurchaseCents, selectedActionIds, asOf = new Date() }: RunwayInput): SemesterRunway {
   if (!profile.semesterEnd || !profile.semesterStart) {
-    return { status: "unavailable", coveredThrough: null, projectedNeedCents: 0, finalBufferCents: 0, shortfallCents: 0, daysToFinals: 0, actions: [] };
+    return { status: "unavailable", coveredThrough: null, projectedNeedCents: 0, selectedImpactCents: 0, effectiveResourcesCents: 0, finalBufferCents: 0, shortfallCents: 0, daysToFinals: 0, actions: [] };
   }
 
   const today = new Date(Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate(), 12));
   const finals = utcDate(profile.semesterEnd);
   const monthEndDate = utcDate(monthEnd(month));
   if (today > finals || !month.startsWith(today.toISOString().slice(0, 7))) {
-    return { status: "unavailable", coveredThrough: null, projectedNeedCents: 0, finalBufferCents: 0, shortfallCents: 0, daysToFinals: daysBetween(today, finals), actions: [] };
+    return { status: "unavailable", coveredThrough: null, projectedNeedCents: 0, selectedImpactCents: 0, effectiveResourcesCents: 0, finalBufferCents: 0, shortfallCents: 0, daysToFinals: daysBetween(today, finals), actions: [] };
   }
 
   const summary = getBudgetSummary(transactions, budgets);
@@ -82,7 +84,9 @@ export function calculateSemesterRunway({ month, profile, transactions, budgets,
     .filter((action) => selectedActionIds.includes(action.id))
     .reduce((total, action) => total + action.impactCents, 0);
   const projectedNeedCents = currentRemainingCents + futureDailyCents * futureDays + plannedPurchaseCents;
-  let balance = Math.max(availableFundsCents, 0) + selectedImpactCents - plannedPurchaseCents;
+  const effectiveResourcesCents = Math.max(availableFundsCents, 0) + selectedImpactCents;
+  const finalBalanceCents = effectiveResourcesCents - projectedNeedCents;
+  let balance = effectiveResourcesCents - plannedPurchaseCents;
   let coveredThrough: string | null = null;
   let cursor = today;
 
@@ -95,11 +99,13 @@ export function calculateSemesterRunway({ month, profile, transactions, budgets,
   }
 
   return {
-    status: balance >= 0 ? "covered" : "shortfall",
-    coveredThrough: balance >= 0 ? profile.semesterEnd : coveredThrough,
+    status: finalBalanceCents >= 0 ? "covered" : "shortfall",
+    coveredThrough: finalBalanceCents >= 0 ? profile.semesterEnd : coveredThrough,
     projectedNeedCents,
-    finalBufferCents: Math.max(balance, 0),
-    shortfallCents: Math.max(-balance, 0),
+    selectedImpactCents,
+    effectiveResourcesCents,
+    finalBufferCents: Math.max(finalBalanceCents, 0),
+    shortfallCents: Math.max(-finalBalanceCents, 0),
     daysToFinals: daysBetween(today, finals),
     actions,
   };

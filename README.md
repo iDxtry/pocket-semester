@@ -78,7 +78,7 @@ Build Week provides Codex credits, not OpenAI API credits. Pocket Semester there
 
 Codex with GPT-5.6 accelerated the product framing, semester-runway engine, provider boundary, structured schemas, mobile/accessibility improvements, test coverage, visual audits, and final submission materials. The human builder selected the student problem, the money assumptions, privacy boundaries, and the final design direction. See [docs/build-week.md](docs/build-week.md) for the dated build record.
 
-Paste-ready [Devpost copy](docs/devpost-submission.md) and the [under-three-minute demo script](docs/demo-video.md) preserve this same runtime/build-time distinction.
+Use the Judge path above to reproduce the public demo. The repository keeps product documentation and the build record rather than a word-for-word submission script or paste-ready application copy.
 
 ## Privacy
 
